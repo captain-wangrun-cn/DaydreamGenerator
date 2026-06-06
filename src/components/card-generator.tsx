@@ -97,6 +97,12 @@ export function CardGenerator() {
   const [isPending, startTransition] = useTransition();
   const [hasGenerated, setHasGenerated] = useState(false);
   const [searchLogs, setSearchLogs] = useState<string[]>([]);
+  const [theme, setTheme] = useState<"auto" | "light" | "dark">(() => {
+    if (typeof window === "undefined") return "auto";
+    const saved = localStorage.getItem("theme");
+    if (saved === "dark" || saved === "light") return saved;
+    return "auto";
+  });
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const providerWarning = unsupportedMediaWarning(config.provider, referenceMedia);
@@ -122,6 +128,14 @@ export function CardGenerator() {
 
     setHistory(loadHistory());
   }, []);
+
+  useEffect(() => {
+    const resolved = theme === "auto"
+      ? (new Date().getHours() >= 6 && new Date().getHours() < 18 ? "light" : "dark")
+      : theme;
+    document.documentElement.dataset.theme = resolved;
+    localStorage.setItem("theme", theme);
+  }, [theme]);
 
   function updateConfig(patch: Partial<LlmConfig>) {
     setConfig((current) => {
@@ -606,6 +620,14 @@ export function CardGenerator() {
         <p className="hero-copy">
           一句话灵感 · 一键生成角色卡 · JSON / PNG 多格式导出
         </p>
+        <button
+          className="theme-toggle"
+          type="button"
+          aria-label="切换主题：自动 / 浅色 / 深色"
+          onClick={() => setTheme((t) => (t === "auto" ? "light" : t === "light" ? "dark" : "auto"))}
+        >
+          {theme === "auto" ? "🕐" : theme === "light" ? "☀️" : "🌙"}
+        </button>
       </header>
 
       <nav className="stepper" aria-label="生成步骤">
