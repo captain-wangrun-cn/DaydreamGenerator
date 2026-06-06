@@ -601,10 +601,10 @@ export function CardGenerator() {
   return (
     <main className="app-shell">
       <header className="masthead">
-        <p className="eyebrow">SillyTavern Card Forge</p>
-        <h1>把一点灵感，锻成可导入的角色卡。</h1>
+        <p className="eyebrow">DaydreamGenerator</p>
+        <h1>把白日梦，装进角色卡。</h1>
         <p className="hero-copy">
-          Character Card V2 · JSON / PNG 导出 · OpenAI / Gemini / Anthropic / 兼容端点直连 · 带有效期 Vercel 直链。
+          一句话灵感 · 一键生成角色卡 · JSON / PNG 多格式导出
         </p>
       </header>
 
