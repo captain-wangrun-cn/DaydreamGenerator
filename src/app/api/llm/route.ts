@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { cardKindSchema, characterCardV2Schema } from "@/lib/card-schema";
-import { buildProviderPayload, formatSearchResults } from "@/lib/llm/providers";
+import { buildProviderPayload, fetchLlmWithRetry, formatSearchResults } from "@/lib/llm/providers";
 import type { LlmTurnRequest, WebSearchResultItem } from "@/lib/llm/types";
 
 export const runtime = "nodejs";
@@ -45,9 +45,7 @@ export async function POST(request: Request) {
 
     for (let round = 0; round <= MAX_SEARCH_ROUNDS; round++) {
       const payload = buildProviderPayload(body);
-      const response = await fetch(payload.url, payload.init);
-      const responseText = await response.text();
-      const json = responseText ? JSON.parse(responseText) : {};
+      const { response, json } = await fetchLlmWithRetry(payload.url, payload.init);
 
       if (!response.ok) {
         const message = extractError(json) ?? response.statusText;

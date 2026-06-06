@@ -26,9 +26,7 @@ export async function sendLlmTurn(request: LlmTurnRequest): Promise<LlmTurnResul
 
   for (let round = 0; round <= maxSearchRounds; round++) {
     const payload = buildProviderPayload(request);
-    const response = await fetch(payload.url, payload.init);
-    const responseText = await response.text();
-    const json = responseText ? JSON.parse(responseText) : {};
+    const { response, json } = await fetchLlmWithRetry(payload.url, payload.init);
 
     if (!response.ok) {
       const message = extractProviderError(json) ?? response.statusText;
@@ -63,6 +61,45 @@ export async function sendLlmTurn(request: LlmTurnRequest): Promise<LlmTurnResul
   }
 
   throw new Error("Unexpected end of search loop.");
+}
+
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+/**
+ * Fetch an LLM endpoint with retry on transient failures (network errors,
+ * 429 rate limits, 5xx). Non-retryable responses (e.g. 400/401) are returned
+ * as-is for the caller to handle. Uses exponential backoff with jitter.
+ */
+export async function fetchLlmWithRetry(
+  url: string,
+  init: RequestInit,
+  options: { retries?: number; baseDelayMs?: number } = {}
+): Promise<{ response: Response; json: unknown }> {
+  const retries = options.retries ?? 2;
+  const baseDelayMs = options.baseDelayMs ?? 600;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, init);
+      const responseText = await response.text();
+      const json = responseText ? JSON.parse(responseText) : {};
+
+      if (response.ok || !RETRYABLE_STATUS.has(response.status) || attempt === retries) {
+        return { response, json };
+      }
+    } catch (error) {
+      lastError = error;
+      if (attempt === retries) {
+        throw error;
+      }
+    }
+
+    const delay = baseDelayMs * 2 ** attempt + Math.random() * 250;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("LLM request failed after retries.");
 }
 
 export async function executeWebSearch(query: string, clientKey?: string): Promise<WebSearchResultItem[]> {
