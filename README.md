@@ -38,7 +38,8 @@ npm test
 
 | 变量 | 说明 | 必填 |
 |------|------|------|
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 存储 token（直链功能） | 用直链时必填 |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 存储 token（直链功能） | 用直链时必填，或使用 OIDC |
+| `BLOB_STORE_ID` + `VERCEL_OIDC_TOKEN` | Vercel Blob OIDC 连接方式 | 使用 OIDC 时必填 |
 | `SHARE_SECRET` | 直链签名密钥，任意随机字符串 | 用直链时必填 |
 | `TAVILY_API_KEY` | Tavily 搜索 API Key（服务端优先） | 可选 |
 | `CRON_SECRET` | 定时清理接口鉴权 | 可选 |

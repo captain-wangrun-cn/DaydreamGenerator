@@ -167,6 +167,7 @@ a {
   border-left: 3px solid transparent;
   border-radius: var(--radius-md);
   background: var(--surface);
+  color: var(--ink);
   cursor: pointer;
   text-align: left;
   transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
@@ -219,6 +220,7 @@ a {
 }
 
 .step-title {
+  color: var(--ink);
   font-size: 0.9rem;
   font-weight: 700;
 }
@@ -233,6 +235,26 @@ a {
 
 .step-node.active .step-caption {
   color: var(--muted);
+}
+
+[data-theme="dark"] .step-node {
+  background: #232330;
+}
+
+[data-theme="dark"] .step-node.active {
+  background: #302f58;
+}
+
+[data-theme="dark"] .step-title {
+  color: #f3f3f8;
+}
+
+[data-theme="dark"] .step-caption {
+  color: #b8b8c8;
+}
+
+[data-theme="dark"] .step-node.active .step-caption {
+  color: #d6d6e5;
 }
 
 /* Stage */
@@ -592,6 +614,29 @@ a {
   line-height: 1.45;
 }
 
+.thinking-panel {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.thinking-panel summary {
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.thinking-panel p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
 /* Card preview */
 .card-preview {
   display: grid;
@@ -874,7 +919,6 @@ a {
     flex: 1;
   }
 }
-
 
 
 

@@ -2,6 +2,7 @@ import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { characterCardV2Schema } from "@/lib/card-schema";
+import { formatBlobError, getBlobAuthOptions } from "@/lib/blob-config";
 import { dataUrlToBase64, dataUrlToMime, SHARE_MAX_BYTES } from "@/lib/media";
 import { embedCardInPngDataUrl } from "@/lib/png-card";
 import { signShareToken } from "@/lib/share-token";
@@ -26,8 +27,9 @@ export async function POST(request: Request) {
   try {
     const secret = process.env.SHARE_SECRET;
     if (!secret) {
-      throw new Error("Missing SHARE_SECRET.");
+      throw new Error("直链签名密钥未配置：请设置 SHARE_SECRET。");
     }
+    const blobAuth = getBlobAuthOptions();
 
     const body = requestSchema.parse(await request.json());
     const expiresAt = Date.now() + expirationMs[body.expiresIn];
@@ -59,7 +61,8 @@ export async function POST(request: Request) {
 
     await put(pathname, blobBody, {
       access: "public",
-      contentType
+      contentType,
+      ...blobAuth
     });
 
     const token = await signShareToken({
@@ -78,7 +81,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Unknown share error."
+        error: formatBlobError(error)
       },
       { status: 400 }
     );

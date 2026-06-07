@@ -294,6 +294,7 @@ function parseOpenAiResponse(response: unknown, kind: CardKind): LlmTurnOrSearch
   const choice = getPath<Record<string, unknown>>(response, ["choices", 0, "message"]);
   const toolCall = getPath<Record<string, unknown>>(choice, ["tool_calls", 0]);
   const functionCall = getPath<Record<string, unknown>>(toolCall, ["function"]);
+  const thinking = extractReasoningText(choice);
 
   if (functionCall && typeof functionCall.name === "string") {
     const args = typeof functionCall.arguments === "string"
@@ -301,22 +302,27 @@ function parseOpenAiResponse(response: unknown, kind: CardKind): LlmTurnOrSearch
       : functionCall.arguments;
     const parsed = parseToolResult(functionCall.name, args, kind);
     if (parsed) {
-      return parsed;
+      return withThinking(parsed, thinking);
     }
   }
 
   const content = typeof choice?.content === "string" ? choice.content : "";
-  return parseFallbackJson(content, kind);
+  return withThinking(parseFallbackJson(content, kind), thinking);
 }
 
 function parseAnthropicResponse(response: unknown, kind: CardKind): LlmTurnOrSearchResult {
   const content = getArray(getPath(response, ["content"]));
   const tool = content.find((item) => isRecord(item) && item.type === "tool_use");
+  const thinking = content
+    .filter((item) => isRecord(item) && item.type === "thinking")
+    .map((item) => extractReasoningText(item))
+    .filter((item): item is string => Boolean(item))
+    .join("\n\n");
 
   if (isRecord(tool) && typeof tool.name === "string") {
     const parsed = parseToolResult(tool.name, tool.input, kind);
     if (parsed) {
-      return parsed;
+      return withThinking(parsed, thinking);
     }
   }
 
@@ -325,29 +331,33 @@ function parseAnthropicResponse(response: unknown, kind: CardKind): LlmTurnOrSea
     .map((item) => String((item as { text: string }).text))
     .join("\n");
 
-  return parseFallbackJson(text, kind);
+  return withThinking(parseFallbackJson(text, kind), thinking);
 }
 
 function parseGeminiResponse(response: unknown, kind: CardKind): LlmTurnOrSearchResult {
   const parts = getArray(getPath(response, ["candidates", 0, "content", "parts"]));
   const functionPart = parts.find((item) => isRecord(item) && isRecord(item.functionCall));
+  const thinking = parts
+    .filter((item) => isRecord(item) && item.thought === true && typeof item.text === "string")
+    .map((item) => String((item as { text: string }).text))
+    .join("\n\n");
 
   if (isRecord(functionPart) && isRecord(functionPart.functionCall)) {
     const call = functionPart.functionCall;
     if (typeof call.name === "string") {
       const parsed = parseToolResult(call.name, call.args, kind);
       if (parsed) {
-        return parsed;
+        return withThinking(parsed, thinking);
       }
     }
   }
 
   const text = parts
-    .filter((item) => isRecord(item) && typeof item.text === "string")
+    .filter((item) => isRecord(item) && item.thought !== true && typeof item.text === "string")
     .map((item) => String((item as { text: string }).text))
     .join("\n");
 
-  return parseFallbackJson(text, kind);
+  return withThinking(parseFallbackJson(text, kind), thinking);
 }
 
 function normalizeBaseUrl(url?: string): string {
@@ -403,6 +413,53 @@ function getPath<T = unknown>(value: unknown, path: Array<string | number>): T |
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function withThinking(result: LlmTurnOrSearchResult, thinking?: string): LlmTurnOrSearchResult {
+  const normalized = normalizeReasoningText(thinking);
+  if (!normalized || result.action === "web_search" || result.thinking) {
+    return result;
+  }
+
+  return {
+    ...result,
+    thinking: normalized
+  };
+}
+
+function extractReasoningText(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return normalizeReasoningText(value);
+  }
+
+  return normalizeReasoningText(
+    value.thinking ??
+    value.reasoning_content ??
+    value.reasoning ??
+    value.summary ??
+    value.text
+  );
+}
+
+function normalizeReasoningText(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed.slice(0, 4000) : undefined;
+  }
+
+  if (Array.isArray(value)) {
+    const text = value
+      .map((item) => extractReasoningText(item))
+      .filter(Boolean)
+      .join("\n\n");
+    return normalizeReasoningText(text);
+  }
+
+  if (isRecord(value)) {
+    return extractReasoningText(value);
+  }
+
+  return undefined;
 }
 
 export function makeLocalDraft(request: Pick<LlmTurnRequest, "kind" | "prompt" | "answers">): LlmTurnResult {

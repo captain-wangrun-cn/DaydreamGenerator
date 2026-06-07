@@ -53,6 +53,7 @@ export type AskQuestion = {
 export type AskUserResult = {
   action: "ask_user";
   message?: string;
+  thinking?: string;
   questions: AskQuestion[];
   searches?: string[];
 };
@@ -60,6 +61,7 @@ export type AskUserResult = {
 export type SubmitCardResult = {
   action: "submit_card";
   message?: string;
+  thinking?: string;
   status: "draft" | "final";
   card: CharacterCardV2;
   searches?: string[];

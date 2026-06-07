@@ -2,7 +2,8 @@ import { normalizeCard, type CardKind } from "@/lib/card-schema";
 import type { AskQuestion, LlmTurnOrSearchResult, LlmTurnResult } from "@/lib/llm/types";
 
 export function parseFallbackJson(text: string, kind: CardKind): LlmTurnOrSearchResult {
-  const parsed = parseLooseJson(text);
+  const thinkingFromText = extractThinkingFromText(text);
+  const parsed = parseLooseJson(stripThinkingBlocks(text));
 
   if (parsed.action === "web_search" && typeof parsed.query === "string") {
     return {
@@ -15,6 +16,7 @@ export function parseFallbackJson(text: string, kind: CardKind): LlmTurnOrSearch
     return {
       action: "ask_user",
       message: typeof parsed.message === "string" ? parsed.message : undefined,
+      thinking: normalizeThinking(parsed.thinking) ?? thinkingFromText,
       questions: normalizeQuestions(parsed.questions)
     };
   }
@@ -23,6 +25,7 @@ export function parseFallbackJson(text: string, kind: CardKind): LlmTurnOrSearch
     return {
       action: "submit_card",
       message: typeof parsed.message === "string" ? parsed.message : undefined,
+      thinking: normalizeThinking(parsed.thinking) ?? thinkingFromText,
       status: parsed.status === "final" ? "final" : "draft",
       card: normalizeCard(parsed.card, kind)
     };
@@ -43,6 +46,7 @@ export function parseToolResult(name: string, args: unknown, kind: CardKind): Ll
     return {
       action: "ask_user",
       message: typeof args.message === "string" ? args.message : undefined,
+      thinking: normalizeThinking(args.thinking),
       questions: normalizeQuestions(args.questions)
     };
   }
@@ -51,6 +55,7 @@ export function parseToolResult(name: string, args: unknown, kind: CardKind): Ll
     return {
       action: "submit_card",
       message: typeof args.message === "string" ? args.message : undefined,
+      thinking: normalizeThinking(args.thinking),
       status: args.status === "final" ? "final" : "draft",
       card: normalizeCard(args.card, kind)
     };
@@ -161,4 +166,25 @@ export function parseLooseJson(text: string): Record<string, unknown> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeThinking(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 4000) : undefined;
+}
+
+function extractThinkingFromText(text: string): string | undefined {
+  const matches = Array.from(text.matchAll(/<think>([\s\S]*?)<\/think>/gi))
+    .map((match) => match[1]?.trim())
+    .filter(Boolean);
+
+  return normalizeThinking(matches.join("\n\n"));
+}
+
+function stripThinkingBlocks(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 }

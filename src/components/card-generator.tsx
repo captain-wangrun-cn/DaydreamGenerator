@@ -97,6 +97,7 @@ export function CardGenerator() {
   const [isPending, startTransition] = useTransition();
   const [hasGenerated, setHasGenerated] = useState(false);
   const [searchLogs, setSearchLogs] = useState<string[]>([]);
+  const [thinking, setThinking] = useState("");
   const [theme, setTheme] = useState<"auto" | "light" | "dark">(() => {
     if (typeof window === "undefined") return "auto";
     const saved = localStorage.getItem("theme");
@@ -220,7 +221,8 @@ export function CardGenerator() {
       return;
     }
 
-    setStatus(config.directPreferred ? "正在尝试浏览器直连 LLM..." : "正在通过后端临时代理请求 LLM...");
+    setThinking("");
+    setStatus(config.directPreferred ? "生成已开始：正在尝试浏览器直连 LLM..." : "生成已开始：正在通过后端临时代理连接 LLM...");
 
     const request = {
       config,
@@ -239,7 +241,7 @@ export function CardGenerator() {
         if (config.directPreferred) {
           try {
             result = await sendLlmTurn(request);
-            applyLlmResult(result, "浏览器直连成功。", "llm");
+            applyLlmResult(result, result.action === "ask_user" ? "已连接 LLM，正在确认关键设定。" : "已连接 LLM，卡片草稿生成完成。", "llm");
             return;
           } catch (directError) {
             setStatus(`直连失败，正在走后端临时代理：${directError instanceof Error ? directError.message : "未知错误"}`);
@@ -258,7 +260,8 @@ export function CardGenerator() {
           throw new Error(json.error ?? "LLM 代理请求失败。");
         }
 
-        applyLlmResult(json as LlmTurnResult, "后端临时代理完成。", "llm");
+        const proxiedResult = json as LlmTurnResult;
+        applyLlmResult(proxiedResult, proxiedResult.action === "ask_user" ? "代理已连接 LLM，正在确认关键设定。" : "代理已完成生成，卡片已更新。", "llm");
       } catch (llmError) {
         setError(llmError instanceof Error ? llmError.message : "LLM 请求失败。");
         setStatus("生成中断。你可以改用 JSON fallback、换模型，或先用本地草稿。");
@@ -268,9 +271,8 @@ export function CardGenerator() {
 
   function applyLlmResult(result: LlmTurnResult, nextStatus: string, source: HistoryItem["source"] = "llm") {
     setHasGenerated(true);
-    if (result.searches?.length) {
-      setSearchLogs(result.searches);
-    }
+    setThinking(result.thinking ?? "");
+    setSearchLogs(result.searches ?? []);
 
     if (result.action === "ask_user") {
       setInterview({
@@ -286,7 +288,7 @@ export function CardGenerator() {
           content: result.questions.map((item, index) => `${index + 1}. ${item.question}`).join("\n")
         }
       ]);
-      setStatus(result.message || "LLM 需要再问几个关键细节。");
+      setStatus(formatStatus(nextStatus, result.message));
       return;
     }
 
@@ -302,7 +304,7 @@ export function CardGenerator() {
         content: result.message || `已提交 ${result.status === "final" ? "最终" : "草稿"}卡片。`
       }
     ]);
-    setStatus(result.message || nextStatus);
+    setStatus(formatStatus(nextStatus, result.message));
     saveHistoryItem({
       card: normalized,
       prompt,
@@ -542,7 +544,7 @@ export function CardGenerator() {
 
   function saveConfig() {
     localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
-    setStatus("连接配置已保存到浏览器缓存。");
+    setStatus("连接配置已保存。现在可以去写灵感，生成时会提示连接与生成进度。");
   }
 
   function clearSavedConfig() {
@@ -878,16 +880,23 @@ export function CardGenerator() {
 
             <div className="inline-row">
               <button className="button primary" type="button" disabled={isPending} onClick={() => void runGenerator()}>
-                {isPending ? "生成中..." : hasGenerated ? "重新生成" : "让 LLM 采访/生成"}
+                {isPending ? "正在连接并生成..." : hasGenerated ? "重新生成角色卡" : "连接 LLM 并开始生成"}
               </button>
               <button className="button ghost" type="button" onClick={() => applyLlmResult(makeLocalDraft({ kind: "character", prompt, answers }), "已生成本地草稿。", "draft")}>
                 本地草稿
               </button>
             </div>
 
+            {thinking && (
+              <details className="thinking-panel">
+                <summary>查看模型思考摘要</summary>
+                <p>{thinking}</p>
+              </details>
+            )}
+
             {searchLogs.length > 0 && (
               <div className="status-card">
-                <p className="status-line"><strong>🔍 网络搜索记录</strong></p>
+                <p className="status-line"><strong>网络搜索记录</strong></p>
                 {searchLogs.map((query, index) => (
                   <p className="status-line" key={index}>· {query}</p>
                 ))}
@@ -1196,6 +1205,14 @@ function sourceLabel(source: HistoryItem["source"]): string {
     default:
       return "LLM 生成";
   }
+}
+
+function formatStatus(primary: string, detail?: string): string {
+  if (!detail) {
+    return primary;
+  }
+
+  return `${primary} ${detail}`;
 }
 
 function formatHistoryTime(value: number): string {

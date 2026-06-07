@@ -96,6 +96,10 @@ function askUserParameters() {
         type: "string",
         description: "Short explanation for why these questions matter."
       },
+      thinking: {
+        type: "string",
+        description: "A concise, user-safe summary of your reasoning, visual observations, search findings, and tradeoffs. Do not include hidden chain-of-thought."
+      },
       questions: questionArrayParameters()
     },
     required: ["questions"]
@@ -156,6 +160,10 @@ function submitCardParameters() {
       },
       message: {
         type: "string"
+      },
+      thinking: {
+        type: "string",
+        description: "A concise, user-safe summary of what you inferred and why this card shape fits. Do not include hidden chain-of-thought."
       },
       card: cardJsonSchemaDescription()
     },

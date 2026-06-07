@@ -25,6 +25,7 @@ describe("LLM result parsing", () => {
   it("parses tool submit_card arguments", () => {
     const result = parseToolResult("submit_card", {
       status: "final",
+      thinking: "根据用户强调的海边意象，把角色核心放在漂泊感。",
       card: {
         data: {
           name: "海边旅人"
@@ -35,6 +36,16 @@ describe("LLM result parsing", () => {
     expect(result?.action).toBe("submit_card");
     if (result?.action === "submit_card") {
       expect(result.card.data.name).toBe("海边旅人");
+      expect(result.thinking).toContain("海边意象");
+    }
+  });
+
+  it("extracts collapsible thinking from fallback think blocks", () => {
+    const result = parseFallbackJson('<think>先确认关系张力。</think>{"action":"ask_user","questions":["你想要什么关系？"]}', "character");
+
+    expect(result.action).toBe("ask_user");
+    if (result.action === "ask_user") {
+      expect(result.thinking).toBe("先确认关系张力。");
     }
   });
 });

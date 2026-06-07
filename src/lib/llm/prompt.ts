@@ -20,8 +20,8 @@ export const generatorSystemPrompt = `
 
 export const fallbackJsonInstruction = `
 如果当前 API 不支持 tool call，你必须只返回严格 JSON，格式二选一：
-{"action":"ask_user","message":"简短说明","questions":[{"question":"问题1","options":[{"label":"选项A","description":"简短影响说明"},{"label":"选项B","description":"简短影响说明"}]}]}
-{"action":"submit_card","status":"draft","message":"简短说明","card":{"spec":"chara_card_v2","spec_version":"2.0","data":{...}}}
+{"action":"ask_user","message":"简短说明","thinking":"可选：面向用户的简短推理摘要，不要写隐藏思维链","questions":[{"question":"问题1","options":[{"label":"选项A","description":"简短影响说明"},{"label":"选项B","description":"简短影响说明"}]}]}
+{"action":"submit_card","status":"draft","message":"简短说明","thinking":"可选：面向用户的简短推理摘要，不要写隐藏思维链","card":{"spec":"chara_card_v2","spec_version":"2.0","data":{...}}}
 `.trim();
 
 export function buildUserPrompt(input: {
