@@ -31,7 +31,7 @@ export async function GET(
     return new Response(blob.stream, {
       headers: {
         "Content-Type": payload.contentType,
-        "Content-Disposition": `attachment; filename="${payload.filename}"`,
+        "Content-Disposition": contentDispositionAttachment(payload.filename),
         "Cache-Control": "no-store"
       }
     });
@@ -47,4 +47,20 @@ export async function GET(
       { status: 400 }
     );
   }
+}
+
+function contentDispositionAttachment(filename: string): string {
+  const fallback = filename
+    .normalize("NFKD")
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80) || "card";
+
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeRFC5987ValueChars(filename)}`;
+}
+
+function encodeRFC5987ValueChars(value: string): string {
+  return encodeURIComponent(value)
+    .replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
 }
