@@ -495,14 +495,14 @@ function normalizeReasoningText(value: unknown): string | undefined {
   return undefined;
 }
 
-export function makeLocalDraft(request: Pick<LlmTurnRequest, "kind" | "prompt" | "answers">): LlmTurnResult {
+export function makeLocalDraft(request: Pick<LlmTurnRequest, "kind" | "prompt" | "answers" | "language">): LlmTurnResult {
   const title = request.prompt.split(/[\n，。,.]/).map((part) => part.trim()).find(Boolean);
   const card = normalizeCard({
     name: title ? title.slice(0, 24) : "未命名角色",
     description: request.prompt || "根据用户描述生成的卡片草稿。",
     personality: "请在预览中补充角色性格、口吻和行为习惯。",
     scenario: request.answers || "请在预览中补充场景、关系和当前冲突。",
-    first_mes: "你好，我一直在等你。",
+    first_mes: localDraftFirstMessage(request.language),
     tags: ["draft"]
   }, "character");
 
@@ -512,6 +512,17 @@ export function makeLocalDraft(request: Pick<LlmTurnRequest, "kind" | "prompt" |
     message: "未调用 LLM，已根据当前描述生成一个可编辑草稿。",
     card
   };
+}
+
+function localDraftFirstMessage(language: LlmTurnRequest["language"]): string {
+  switch (language) {
+    case "en-US":
+      return "Hi, I have been waiting for you.";
+    case "ja-JP":
+      return "こんにちは、ずっとあなたを待っていました。";
+    default:
+      return "你好，我一直在等你。";
+  }
 }
 
 export function unsupportedMediaWarning(provider: string, media: MediaAttachment[]): string | null {

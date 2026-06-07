@@ -1,6 +1,7 @@
 import type { CharacterCardV2, CardKind } from "@/lib/card-schema";
 
 export type ProviderId = "openai" | "gemini" | "anthropic" | "openai-compatible";
+export type UiLanguage = "zh-CN" | "en-US" | "ja-JP";
 
 export type LlmConfig = {
   provider: ProviderId;
@@ -33,6 +34,7 @@ export type LlmTurnRequest = {
   config: LlmConfig;
   kind: CardKind;
   prompt: string;
+  language?: UiLanguage;
   answers: string;
   messages: ChatMessage[];
   media: MediaAttachment[];

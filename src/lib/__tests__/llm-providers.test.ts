@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { enforceInterviewBeforeSubmit } from "@/lib/llm/providers";
+import { enforceInterviewBeforeSubmit, makeLocalDraft } from "@/lib/llm/providers";
+import { buildUserPrompt } from "@/lib/llm/prompt";
 import type { LlmTurnRequest } from "@/lib/llm/types";
 import { normalizeCard } from "@/lib/card-schema";
 
@@ -47,5 +48,29 @@ describe("LLM provider guardrails", () => {
     });
 
     expect(result.action).toBe("submit_card");
+  });
+
+  it("passes the selected first-message language into the user prompt", () => {
+    const prompt = buildUserPrompt({
+      ...baseRequest,
+      language: "en-US"
+    });
+
+    expect(prompt).toContain("English");
+    expect(prompt).toContain("first_mes");
+  });
+
+  it("uses selected language for local draft first message", () => {
+    const result = makeLocalDraft({
+      kind: "character",
+      prompt: "星港店主",
+      answers: "",
+      language: "ja-JP"
+    });
+
+    expect(result.action).toBe("submit_card");
+    if (result.action === "submit_card") {
+      expect(result.card.data.first_mes).toBe("こんにちは、ずっとあなたを待っていました。");
+    }
   });
 });

@@ -19,6 +19,7 @@ const requestSchema = z.object({
   }),
   kind: cardKindSchema,
   prompt: z.string().default(""),
+  language: z.enum(["zh-CN", "en-US", "ja-JP"]).default("zh-CN"),
   answers: z.string().default(""),
   messages: z.array(z.object({
     role: z.enum(["user", "assistant", "system"]),

@@ -1,5 +1,5 @@
 import type { CardKind, CharacterCardV2 } from "@/lib/card-schema";
-import type { ChatMessage, MediaAttachment } from "@/lib/llm/types";
+import type { ChatMessage, MediaAttachment, UiLanguage } from "@/lib/llm/types";
 
 export const generatorSystemPrompt = `
 你是一个 SillyTavern Character Card V2 制卡助手。你要把用户的自由描述、参考图片或参考视频转成可导入的角色卡。
@@ -29,6 +29,7 @@ export const fallbackJsonInstruction = `
 export function buildUserPrompt(input: {
   kind: CardKind;
   prompt: string;
+  language?: UiLanguage;
   answers: string;
   messages: ChatMessage[];
   media: MediaAttachment[];
@@ -41,10 +42,14 @@ export function buildUserPrompt(input: {
   const conversation = input.messages
     .map((message) => `${message.role}: ${message.content}`)
     .join("\n") || "无";
+  const languageLabel = languageName(input.language ?? "zh-CN");
 
   return `
 用户原始描述：
 ${input.prompt || "无"}
+
+界面与首句语言：
+${languageLabel}
 
 用户补充回答：
 ${input.answers || "无"}
@@ -58,8 +63,19 @@ ${mediaSummary}
 当前草稿：
 ${input.currentCard ? JSON.stringify(input.currentCard, null, 2) : "无"}
 
-请决定下一步：如果还没有看到用户补充回答或已完成的采访问答，必须继续提问；只有完成至少一轮问答后，才可以提交 draft/final 卡片。
+请决定下一步：如果还没有看到用户补充回答或已完成的采访问答，必须继续提问；只有完成至少一轮问答后，才可以提交 draft/final 卡片。提交卡片时，first_mes 必须使用“界面与首句语言”指定的语言自然书写。
 `.trim();
+}
+
+function languageName(language: UiLanguage): string {
+  switch (language) {
+    case "en-US":
+      return "English";
+    case "ja-JP":
+      return "日本語";
+    default:
+      return "简体中文";
+  }
 }
 
 export function cardJsonSchemaDescription() {

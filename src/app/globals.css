@@ -444,6 +444,10 @@ a {
   box-shadow: var(--shadow-sm);
 }
 
+.button.danger {
+  color: var(--rose);
+}
+
 /* Drop zone */
 .drop-zone {
   display: grid;
@@ -494,6 +498,40 @@ a {
 
 .media-thumb img,
 .media-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.crop-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.crop-preview {
+  position: relative;
+  width: min(100%, 320px);
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.crop-preview::after {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 0 0 1px rgba(17, 18, 20, 0.18);
+  content: "";
+  pointer-events: none;
+}
+
+.crop-preview img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -705,6 +743,17 @@ a {
   border-top: 1px solid var(--line);
 }
 
+.history-panel.standalone {
+  margin-top: 22px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.history-panel h2,
 .history-panel h3 {
   margin: 0;
   font-size: 1rem;
@@ -720,8 +769,9 @@ a {
 
 .history-item {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -729,8 +779,10 @@ a {
 }
 
 .history-thumb {
-  width: 48px;
-  height: 48px;
+  display: grid;
+  place-items: center;
+  width: 72px;
+  aspect-ratio: 1;
   overflow: hidden;
   border-radius: var(--radius-sm);
   background: var(--line);
@@ -740,6 +792,18 @@ a {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.history-thumb span {
+  padding: 6px;
+  color: var(--faint);
+  font-size: 0.72rem;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.history-main {
+  min-width: 0;
 }
 
 .history-desc {
@@ -756,6 +820,7 @@ a {
 .history-actions {
   display: flex;
   grid-column: 1 / -1;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -763,6 +828,18 @@ a {
   min-height: 34px;
   padding: 0 14px;
   font-size: 0.82rem;
+}
+
+.history-share-link {
+  display: inline-block;
+  overflow: hidden;
+  max-width: 100%;
+  margin-top: 6px;
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .step-pill {
@@ -919,6 +996,5 @@ a {
     flex: 1;
   }
 }
-
 
 
