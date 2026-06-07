@@ -11,7 +11,7 @@
 - **智能采访** — LLM 先提问确认关键设定（支持单选/多选），再生成卡片
 - **多模态输入** — 截图、图片、视频作为参考素材（视频仅 Gemini）
 - **PNG 嵌入** — 头像 + JSON 元数据嵌入同一张 PNG，SillyTavern 可直接导入
-- **有效期直链** — 生成带过期时间的 Vercel Blob 分享链接
+- **有效期直链** — 使用私有 Vercel Blob 存储，生成带过期时间的签名分享链接
 - **本地历史** — 浏览器缓存最近 30 张卡片，可恢复和管理
 
 ## 快速开始
@@ -38,7 +38,7 @@ npm test
 
 | 变量 | 说明 | 必填 |
 |------|------|------|
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 存储 token（直链功能） | 用直链时必填，或使用 OIDC |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 存储 token（私有直链功能） | 用直链时必填，或使用 OIDC |
 | `BLOB_STORE_ID` + `VERCEL_OIDC_TOKEN` | Vercel Blob OIDC 连接方式 | 使用 OIDC 时必填 |
 | `SHARE_SECRET` | 直链签名密钥，任意随机字符串 | 用直链时必填 |
 | `TAVILY_API_KEY` | Tavily 搜索 API Key（服务端优先） | 可选 |
@@ -94,4 +94,4 @@ openssl rand -hex 32
 - LLM API Key 默认只存在浏览器内存，点击"保存连接配置"才写入 localStorage
 - 直连失败走后端代理时，Key 仅用于本次请求转发，不做任何持久化
 - Tavily Key 同理：服务端有配置则客户端无需填写
-- 直链文件存储在 Vercel Blob，到期后由 cron 自动删除
+- 直链文件存储在私有 Vercel Blob，外部只能通过应用生成的签名链接下载，到期后由 cron 自动删除

@@ -1,4 +1,4 @@
-import { list } from "@vercel/blob";
+import { get } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { formatBlobError, getBlobAuthOptions } from "@/lib/blob-config";
 import { verifyShareToken } from "@/lib/share-token";
@@ -18,23 +18,17 @@ export async function GET(
 
     const { token } = await context.params;
     const payload = await verifyShareToken(token, secret);
-    const result = await list({
-      prefix: payload.pathname,
-      limit: 1,
+    const blob = await get(payload.pathname, {
+      access: "private",
+      useCache: false,
       ...blobAuth
     });
-    const blob = result.blobs.find((item) => item.pathname === payload.pathname);
 
-    if (!blob) {
+    if (!blob || blob.statusCode !== 200 || !blob.stream) {
       return NextResponse.json({ error: "Shared file not found." }, { status: 404 });
     }
 
-    const blobResponse = await fetch(blob.url);
-    if (!blobResponse.ok || !blobResponse.body) {
-      return NextResponse.json({ error: "Could not read shared file." }, { status: 502 });
-    }
-
-    return new Response(blobResponse.body, {
+    return new Response(blob.stream, {
       headers: {
         "Content-Type": payload.contentType,
         "Content-Disposition": `attachment; filename="${payload.filename}"`,

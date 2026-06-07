@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     }
 
     await put(pathname, blobBody, {
-      access: "public",
+      access: "private",
       contentType,
       ...blobAuth
     });
