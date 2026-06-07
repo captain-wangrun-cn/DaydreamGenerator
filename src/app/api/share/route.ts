@@ -1,7 +1,7 @@
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { characterCardV2Schema } from "@/lib/card-schema";
+import { characterCardV2Schema, isShareableCard } from "@/lib/card-schema";
 import { formatBlobError, getBlobAuthOptions } from "@/lib/blob-config";
 import { dataUrlToBase64, dataUrlToMime, SHARE_MAX_BYTES } from "@/lib/media";
 import { embedCardInPngDataUrl } from "@/lib/png-card";
@@ -14,7 +14,16 @@ const expirationSchema = z.enum(["1h", "24h", "7d"]);
 const requestSchema = z.object({
   card: characterCardV2Schema,
   avatarDataUrl: z.string().optional(),
-  expiresIn: expirationSchema.default("24h")
+  expiresIn: expirationSchema.default("24h"),
+  generated: z.boolean().optional()
+}).superRefine((value, context) => {
+  if (value.generated !== true) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["generated"],
+      message: "还没有生成东西，不能创建分享直链。"
+    });
+  }
 });
 
 const expirationMs: Record<z.infer<typeof expirationSchema>, number> = {
@@ -25,13 +34,22 @@ const expirationMs: Record<z.infer<typeof expirationSchema>, number> = {
 
 export async function POST(request: Request) {
   try {
+    const parsed = requestSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      throw new Error(parsed.error.issues[0]?.message ?? "分享请求无效。");
+    }
+
+    const body = parsed.data;
+    if (!isShareableCard(body.card)) {
+      throw new Error("还没有生成有效角色卡，不能创建分享直链。");
+    }
+
     const secret = process.env.SHARE_SECRET;
     if (!secret) {
       throw new Error("直链签名密钥未配置：请设置 SHARE_SECRET。");
     }
     const blobAuth = getBlobAuthOptions();
 
-    const body = requestSchema.parse(await request.json());
     const expiresAt = Date.now() + expirationMs[body.expiresIn];
     const safeName = sanitizeFilename(body.card.data.name || "card");
     const hasAvatar = Boolean(body.avatarDataUrl);

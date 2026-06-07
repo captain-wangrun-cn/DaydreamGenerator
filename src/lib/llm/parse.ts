@@ -84,7 +84,7 @@ export function normalizeQuestions(value: unknown): AskQuestion[] {
     .map((item): AskQuestion | null => {
       if (typeof item === "string") {
         const question = item.trim();
-        return question ? { question, options: [] } : null;
+        return question ? { question, options: ensureMinimumOptions([]) } : null;
       }
 
       if (!isRecord(item)) {
@@ -103,7 +103,7 @@ export function normalizeQuestions(value: unknown): AskQuestion[] {
 
       return {
         question,
-        options: normalizeOptions(item.options),
+        options: ensureMinimumOptions(normalizeOptions(item.options)),
         multiSelect: item.multiSelect === true ? true : undefined
       };
     })
@@ -141,6 +141,26 @@ function normalizeOptions(value: unknown) {
     })
     .filter((item): item is { label: string; description?: string } => Boolean(item))
     .slice(0, 4);
+}
+
+function ensureMinimumOptions(options: Array<{ label: string; description?: string }>) {
+  const fallbackOptions = [
+    { label: "保持原设定", description: "尽量贴近我已经给出的描述。" },
+    { label: "更柔和", description: "降低冲突，让开场更自然慢热。" },
+    { label: "更强张力", description: "强化关系冲突、秘密或戏剧性。" }
+  ];
+
+  const merged = [...options];
+  for (const option of fallbackOptions) {
+    if (merged.length >= 3) {
+      break;
+    }
+    if (!merged.some((item) => item.label === option.label)) {
+      merged.push(option);
+    }
+  }
+
+  return merged.slice(0, 4);
 }
 
 export function parseLooseJson(text: string): Record<string, unknown> {

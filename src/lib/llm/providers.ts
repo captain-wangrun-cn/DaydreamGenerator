@@ -33,7 +33,7 @@ export async function sendLlmTurn(request: LlmTurnRequest): Promise<LlmTurnResul
       throw new Error(`LLM request failed: ${message}`);
     }
 
-    const result = payload.parser(json, request.kind);
+    const result = enforceInterviewBeforeSubmit(payload.parser(json, request.kind), request);
 
     if (result.action !== "web_search") {
       if (searches.length > 0) {
@@ -127,6 +127,39 @@ export function formatSearchResults(results: WebSearchResultItem[]): string {
   return results
     .map((item, index) => `${index + 1}. ${item.title}\n   ${item.url}\n   ${item.content}`)
     .join("\n\n");
+}
+
+export function enforceInterviewBeforeSubmit(result: LlmTurnOrSearchResult, request: LlmTurnRequest): LlmTurnOrSearchResult {
+  if (result.action !== "submit_card" || hasCompletedInterview(request)) {
+    return result;
+  }
+
+  return {
+    action: "ask_user",
+    message: "我还需要先确认几个会明显影响角色卡的设定。",
+    thinking: result.thinking,
+    questions: [
+      {
+        question: "这张角色卡最需要优先锁定哪一类核心设定？",
+        options: [
+          { label: "关系张力", description: "先确定角色和用户之间的亲疏、冲突或暧昧。" },
+          { label: "人设口吻", description: "先确定说话方式、性格习惯和互动边界。" },
+          { label: "开场情境", description: "先确定用户进入对话时发生了什么。" }
+        ]
+      }
+    ],
+    searches: result.searches
+  };
+}
+
+function hasCompletedInterview(request: LlmTurnRequest): boolean {
+  if (request.answers.trim()) {
+    return true;
+  }
+
+  return request.messages.some((message) => (
+    message.role === "user" && /回答[:：]/.test(message.content)
+  ));
 }
 
 function buildOpenAiPayload(request: LlmTurnRequest, defaultBaseUrl?: string): ProviderPayload {

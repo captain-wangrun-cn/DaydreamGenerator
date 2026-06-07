@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { createEmptyCard, normalizeCard, type CharacterCardV2 } from "@/lib/card-schema";
+import { createEmptyCard, isShareableCard, normalizeCard, type CharacterCardV2 } from "@/lib/card-schema";
 import { sendLlmTurn, makeLocalDraft, unsupportedMediaWarning } from "@/lib/llm/providers";
 import type { AskQuestion, ChatMessage, LlmConfig, LlmTurnResult, MediaAttachment, ProviderId } from "@/lib/llm/types";
 import { filesToAttachments } from "@/lib/media";
@@ -96,6 +96,8 @@ export function CardGenerator() {
   const [step, setStep] = useState(0);
   const [isPending, startTransition] = useTransition();
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [hasGeneratedCard, setHasGeneratedCard] = useState(false);
+  const [isCurrentCardShareable, setIsCurrentCardShareable] = useState(false);
   const [searchLogs, setSearchLogs] = useState<string[]>([]);
   const [thinking, setThinking] = useState("");
   const [theme, setTheme] = useState<"auto" | "light" | "dark">(() => {
@@ -295,6 +297,8 @@ export function CardGenerator() {
     const normalized = normalizeCard(result.card, "character");
     setCard(normalized);
     setJsonText(JSON.stringify(normalized, null, 2));
+    setHasGeneratedCard(true);
+    setIsCurrentCardShareable(isShareableCard(normalized));
     setInterview(null);
     setStep((current) => (current < 3 ? 3 : current));
     setMessages((current) => [
@@ -464,8 +468,10 @@ export function CardGenerator() {
     try {
       const parsed = normalizeCard(JSON.parse(value), "character");
       setCard(parsed);
+      setIsCurrentCardShareable(isShareableCard(parsed));
       setError("");
     } catch (jsonError) {
+      setIsCurrentCardShareable(false);
       setError(jsonError instanceof Error ? jsonError.message : "JSON 校验失败。");
     }
   }
@@ -487,6 +493,13 @@ export function CardGenerator() {
 
   async function createShareLink() {
     setError("");
+    if (!hasGeneratedCard || !isCurrentCardShareable || !isShareableCard(card)) {
+      setShare(null);
+      setError("还没有生成有效角色卡，不能创建分享直链。");
+      setStatus("先完成生成或手动保存一张有效卡片，再创建直链。");
+      return;
+    }
+
     setStatus("正在生成带有效期的直链...");
     try {
       const avatarDataUrl = avatarImage ? await getAvatarPngDataUrl() : undefined;
@@ -498,7 +511,8 @@ export function CardGenerator() {
         body: JSON.stringify({
           card,
           avatarDataUrl,
-          expiresIn
+          expiresIn,
+          generated: true
         })
       });
       const json = await response.json();
@@ -591,6 +605,9 @@ export function CardGenerator() {
     const restoredCard = normalizeCard(item.card, "character");
     setCard(restoredCard);
     setJsonText(JSON.stringify(restoredCard, null, 2));
+    setHasGenerated(true);
+    setHasGeneratedCard(isShareableCard(restoredCard));
+    setIsCurrentCardShareable(isShareableCard(restoredCard));
     setPrompt(item.prompt);
     setAnswers(item.answers);
     setMessages(item.messages);
@@ -971,7 +988,7 @@ export function CardGenerator() {
               </select>
             </label>
 
-            <button className="button primary" type="button" onClick={createShareLink}>
+            <button className="button primary" type="button" disabled={!hasGeneratedCard || !isCurrentCardShareable} onClick={createShareLink}>
               生成有效期直链
             </button>
 

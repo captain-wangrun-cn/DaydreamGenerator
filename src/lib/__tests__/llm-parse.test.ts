@@ -8,17 +8,17 @@ describe("LLM result parsing", () => {
     expect(result.action).toBe("ask_user");
     if (result.action === "ask_user") {
       expect(result.questions[0]?.question).toBe("你想要什么关系？");
-      expect(result.questions[0]?.options.map((option) => option.label)).toEqual(["暧昧", "敌对"]);
+      expect(result.questions[0]?.options.map((option) => option.label)).toEqual(["暧昧", "敌对", "保持原设定"]);
     }
   });
 
-  it("keeps compatibility with string-only questions", () => {
+  it("fills options for string-only questions", () => {
     const result = parseFallbackJson('{"action":"ask_user","questions":["你想要什么关系？"]}', "character");
 
     expect(result.action).toBe("ask_user");
     if (result.action === "ask_user") {
       expect(result.questions[0]?.question).toBe("你想要什么关系？");
-      expect(result.questions[0]?.options).toEqual([]);
+      expect(result.questions[0]?.options.map((option) => option.label)).toEqual(["保持原设定", "更柔和", "更强张力"]);
     }
   });
 

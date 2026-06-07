@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCard } from "@/lib/card-schema";
+import { isShareableCard, normalizeCard } from "@/lib/card-schema";
 
 describe("Character Card V2 schema", () => {
   it("normalizes data-only character drafts into V2 cards", () => {
@@ -29,5 +29,14 @@ describe("Character Card V2 schema", () => {
       source: "daydream-generator",
       format: "character-card-v2"
     });
+  });
+
+  it("requires real generated content before a card is shareable", () => {
+    expect(isShareableCard(normalizeCard({ name: "未命名角色" }, "character"))).toBe(false);
+    expect(isShareableCard(normalizeCard({ name: "星港店主" }, "character"))).toBe(false);
+    expect(isShareableCard(normalizeCard({
+      name: "星港店主",
+      description: "会在凌晨开门的旧星港店主。"
+    }, "character"))).toBe(true);
   });
 });

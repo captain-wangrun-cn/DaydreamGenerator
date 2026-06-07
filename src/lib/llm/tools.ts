@@ -14,7 +14,7 @@ export function openAiTools() {
       type: "function",
       function: {
         name: "ask_user",
-        description: "Ask the user 1 to 3 concrete follow-up questions with selectable options before making the card.",
+        description: "Ask the user 1 to 3 concrete follow-up questions with at least 3 selectable options before making the card.",
         parameters: askUserParameters()
       }
     },
@@ -38,7 +38,7 @@ export function anthropicTools() {
     },
     {
       name: "ask_user",
-      description: "Ask the user 1 to 3 concrete follow-up questions before making the card.",
+      description: "Ask the user 1 to 3 concrete follow-up questions with at least 3 selectable options before making the card.",
       input_schema: askUserParameters()
     },
     {
@@ -60,7 +60,7 @@ export function geminiTools() {
         },
         {
           name: "ask_user",
-          description: "Ask the user 1 to 3 concrete follow-up questions before making the card.",
+          description: "Ask the user 1 to 3 concrete follow-up questions with at least 3 selectable options before making the card.",
           parameters: askUserParameters()
         },
         {
@@ -125,7 +125,7 @@ function questionArrayParameters() {
         },
         options: {
           type: "array",
-          minItems: 2,
+          minItems: 3,
           maxItems: 4,
           items: {
             type: "object",

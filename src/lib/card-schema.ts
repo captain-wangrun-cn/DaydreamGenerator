@@ -100,6 +100,20 @@ export function normalizeCardData(input: CardDraftInput, kind: CardKind = "chara
   });
 }
 
+export function isShareableCard(card: CharacterCardV2): boolean {
+  if (card.data.name.trim() === "未命名角色") {
+    return false;
+  }
+
+  return [
+    card.data.description,
+    card.data.personality,
+    card.data.scenario,
+    card.data.first_mes,
+    card.data.mes_example
+  ].some((value) => value.trim().length > 0);
+}
+
 function createCardDataDefaults(kind: CardKind): CharacterCardData {
   return {
     name: "未命名角色",

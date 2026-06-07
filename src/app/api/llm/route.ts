@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { cardKindSchema, characterCardV2Schema } from "@/lib/card-schema";
-import { buildProviderPayload, fetchLlmWithRetry, formatSearchResults } from "@/lib/llm/providers";
+import { buildProviderPayload, enforceInterviewBeforeSubmit, fetchLlmWithRetry, formatSearchResults } from "@/lib/llm/providers";
 import type { LlmTurnRequest, WebSearchResultItem } from "@/lib/llm/types";
 
 export const runtime = "nodejs";
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `LLM request failed: ${message}` }, { status: 502 });
       }
 
-      const result = payload.parser(json, body.kind);
+      const result = enforceInterviewBeforeSubmit(payload.parser(json, body.kind), body);
 
       if (result.action !== "web_search") {
         if (searches.length > 0) {
