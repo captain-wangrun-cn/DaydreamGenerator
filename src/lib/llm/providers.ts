@@ -3,7 +3,9 @@ import { dataUrlToBase64 } from "@/lib/media";
 import { buildUserPrompt, fallbackJsonInstruction, generatorSystemPrompt } from "@/lib/llm/prompt";
 import { anthropicTools, geminiTools, openAiTools } from "@/lib/llm/tools";
 import { parseFallbackJson, parseLooseJson, parseToolResult } from "@/lib/llm/parse";
-import type { LlmTurnOrSearchResult, LlmTurnRequest, LlmTurnResult, MediaAttachment, ProviderPayload, WebSearchResultItem } from "@/lib/llm/types";
+import type { LlmProgressListener, LlmTurnOrSearchResult, LlmTurnRequest, LlmTurnResult, MediaAttachment, ProviderPayload, WebSearchResultItem } from "@/lib/llm/types";
+
+type WebSearchExecutor = (query: string, clientKey?: string) => Promise<WebSearchResultItem[]>;
 
 export function buildProviderPayload(request: LlmTurnRequest): ProviderPayload {
   switch (request.config.provider) {
@@ -20,13 +22,22 @@ export function buildProviderPayload(request: LlmTurnRequest): ProviderPayload {
   }
 }
 
-export async function sendLlmTurn(request: LlmTurnRequest): Promise<LlmTurnResult> {
+export async function sendLlmTurn(
+  request: LlmTurnRequest,
+  onProgress?: LlmProgressListener,
+  options: { search?: WebSearchExecutor } = {}
+): Promise<LlmTurnResult> {
   const maxSearchRounds = 3;
   const searches: string[] = [];
+  const search = options.search ?? executeWebSearch;
 
   for (let round = 0; round <= maxSearchRounds; round++) {
     const payload = buildProviderPayload(request);
-    const { response, json } = await fetchLlmWithRetry(payload.url, payload.init);
+    await onProgress?.({ type: "provider_connecting", round });
+    const { response, json } = await fetchLlmWithRetry(payload.url, payload.init, {
+      onConnected: (status) => onProgress?.({ type: "provider_connected", round, status }),
+      onFirstByte: () => onProgress?.({ type: "provider_first_byte", round })
+    });
 
     if (!response.ok) {
       const message = extractProviderError(json) ?? response.statusText;
@@ -47,7 +58,8 @@ export async function sendLlmTurn(request: LlmTurnRequest): Promise<LlmTurnResul
     }
 
     searches.push(result.query);
-    const searchResults = await executeWebSearch(result.query, request.config.tavilyKey);
+    await onProgress?.({ type: "web_search", round, query: result.query });
+    const searchResults = await search(result.query, request.config.tavilyKey);
     const searchSummary = formatSearchResults(searchResults);
 
     request = {
@@ -73,7 +85,12 @@ const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 export async function fetchLlmWithRetry(
   url: string,
   init: RequestInit,
-  options: { retries?: number; baseDelayMs?: number } = {}
+  options: {
+    retries?: number;
+    baseDelayMs?: number;
+    onConnected?: (status: number) => void | Promise<void>;
+    onFirstByte?: () => void | Promise<void>;
+  } = {}
 ): Promise<{ response: Response; json: unknown }> {
   const retries = options.retries ?? 2;
   const baseDelayMs = options.baseDelayMs ?? 600;
@@ -82,7 +99,8 @@ export async function fetchLlmWithRetry(
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const response = await fetch(url, init);
-      const responseText = await response.text();
+      await options.onConnected?.(response.status);
+      const responseText = await readResponseText(response, response.ok ? options.onFirstByte : undefined);
       const json = responseText ? JSON.parse(responseText) : {};
 
       if (response.ok || !RETRYABLE_STATUS.has(response.status) || attempt === retries) {
@@ -100,6 +118,41 @@ export async function fetchLlmWithRetry(
   }
 
   throw lastError instanceof Error ? lastError : new Error("LLM request failed after retries.");
+}
+
+async function readResponseText(response: Response, onFirstByte?: () => void | Promise<void>): Promise<string> {
+  if (!response.body) {
+    const text = await response.text();
+    if (text) {
+      await onFirstByte?.();
+    }
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let sawChunk = false;
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      if (!sawChunk) {
+        sawChunk = true;
+        await onFirstByte?.();
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  text += decoder.decode();
+  return text;
 }
 
 export async function executeWebSearch(query: string, clientKey?: string): Promise<WebSearchResultItem[]> {

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { cardKindSchema, characterCardV2Schema } from "@/lib/card-schema";
-import { buildProviderPayload, enforceInterviewBeforeSubmit, fetchLlmWithRetry, formatSearchResults } from "@/lib/llm/providers";
-import type { LlmTurnRequest, WebSearchResultItem } from "@/lib/llm/types";
+import { sendLlmTurn } from "@/lib/llm/providers";
+import type { LlmProgressEvent, LlmTurnRequest, LlmTurnResult, WebSearchResultItem } from "@/lib/llm/types";
 
 export const runtime = "nodejs";
 
@@ -37,56 +37,52 @@ const requestSchema = z.object({
   currentCard: characterCardV2Schema.optional()
 });
 
-const MAX_SEARCH_ROUNDS = 3;
-
 export async function POST(request: Request) {
   try {
-    let body = requestSchema.parse(await request.json()) as unknown as LlmTurnRequest;
-    const searches: string[] = [];
+    const body = requestSchema.parse(await request.json()) as unknown as LlmTurnRequest;
 
-    for (let round = 0; round <= MAX_SEARCH_ROUNDS; round++) {
-      const payload = buildProviderPayload(body);
-      const { response, json } = await fetchLlmWithRetry(payload.url, payload.init);
-
-      if (!response.ok) {
-        const message = extractError(json) ?? response.statusText;
-        return NextResponse.json({ error: `LLM request failed: ${message}` }, { status: 502 });
-      }
-
-      const result = enforceInterviewBeforeSubmit(payload.parser(json, body.kind), body);
-
-      if (result.action !== "web_search") {
-        if (searches.length > 0) {
-          result.searches = searches;
-        }
-        return NextResponse.json(result);
-      }
-
-      if (round === MAX_SEARCH_ROUNDS) {
-        return NextResponse.json({ error: "LLM exceeded maximum search rounds." }, { status: 400 });
-      }
-
-      searches.push(result.query);
-      const searchResults = await serverSearch(result.query, body.config.tavilyKey);
-      const searchSummary = formatSearchResults(searchResults);
-
-      body = {
-        ...body,
-        messages: [
-          ...body.messages,
-          { role: "assistant", content: `[web_search: ${result.query}]` },
-          { role: "user", content: `搜索结果：\n${searchSummary}\n\n请根据以上搜索结果继续生成角色卡，或提出更多问题。` }
-        ]
-      };
+    if (request.headers.get("accept")?.includes("text/event-stream")) {
+      return streamLlmTurn(body);
     }
 
-    return NextResponse.json({ error: "Unexpected end of search loop." }, { status: 500 });
+    const result = await sendLlmTurn(body, undefined, { search: serverSearch });
+    return NextResponse.json(result);
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown LLM proxy error.";
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unknown LLM proxy error." },
-      { status: 400 }
+      { error: message },
+      { status: message.startsWith("LLM request failed:") ? 502 : 400 }
     );
   }
+}
+
+function streamLlmTurn(body: LlmTurnRequest): Response {
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: "progress" | "result" | "error", data: LlmProgressEvent | LlmTurnResult | { error: string }) => {
+        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+      };
+
+      try {
+        const result = await sendLlmTurn(body, (event) => send("progress", event), { search: serverSearch });
+        send("result", result);
+      } catch (error) {
+        send("error", { error: error instanceof Error ? error.message : "Unknown LLM proxy error." });
+      } finally {
+        controller.close();
+      }
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive"
+    }
+  });
 }
 
 async function serverSearch(query: string, clientKey?: string): Promise<WebSearchResultItem[]> {
@@ -121,17 +117,4 @@ async function serverSearch(query: string, clientKey?: string): Promise<WebSearc
   } catch {
     return [];
   }
-}
-
-function extractError(value: unknown): string | null {
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-    const record = value as Record<string, unknown>;
-    if (typeof record.error === "string") return record.error;
-    if (typeof record.error === "object" && record.error !== null) {
-      const inner = record.error as Record<string, unknown>;
-      if (typeof inner.message === "string") return inner.message;
-    }
-    if (typeof record.message === "string") return record.message;
-  }
-  return null;
 }

@@ -6,7 +6,7 @@ export function openAiTools() {
       type: "function",
       function: {
         name: "web_search",
-        description: "Search the web for information about a character, franchise, scenario, or cultural reference to improve card accuracy. Use when the user's description references a specific work, character, or event you want to verify.",
+        description: "Search the web for information about a character, franchise, scenario, cultural reference, quotes, voice lines, catchphrases, or speaking style to improve card accuracy. Use when the user's description references a specific real/searchable character, work, public figure, or event you want to verify.",
         parameters: webSearchParameters()
       }
     },
@@ -33,7 +33,7 @@ export function anthropicTools() {
   return [
     {
       name: "web_search",
-      description: "Search the web for information about a character, franchise, scenario, or cultural reference to improve card accuracy.",
+      description: "Search the web for information about a character, franchise, scenario, cultural reference, quotes, voice lines, catchphrases, or speaking style to improve card accuracy.",
       input_schema: webSearchParameters()
     },
     {
@@ -55,7 +55,7 @@ export function geminiTools() {
       functionDeclarations: [
         {
           name: "web_search",
-          description: "Search the web for information about a character, franchise, scenario, or cultural reference to improve card accuracy.",
+          description: "Search the web for information about a character, franchise, scenario, cultural reference, quotes, voice lines, catchphrases, or speaking style to improve card accuracy.",
           parameters: webSearchParameters()
         },
         {

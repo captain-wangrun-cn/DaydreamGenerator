@@ -41,6 +41,14 @@ export type LlmTurnRequest = {
   currentCard?: CharacterCardV2;
 };
 
+export type LlmProgressEvent =
+  | { type: "provider_connecting"; round: number }
+  | { type: "provider_connected"; round: number; status: number }
+  | { type: "provider_first_byte"; round: number }
+  | { type: "web_search"; round: number; query: string };
+
+export type LlmProgressListener = (event: LlmProgressEvent) => void | Promise<void>;
+
 export type AskOption = {
   label: string;
   description?: string;

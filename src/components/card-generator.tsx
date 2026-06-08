@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createEmptyCard, isShareableCard, normalizeCard, type CharacterCardV2 } from "@/lib/card-schema";
 import { copy, isUiLanguage, languageOptions, uiLocale } from "@/lib/i18n";
 import { sendLlmTurn, makeLocalDraft, unsupportedMediaWarning } from "@/lib/llm/providers";
-import type { AskQuestion, ChatMessage, LlmConfig, LlmTurnResult, MediaAttachment, ProviderId, UiLanguage } from "@/lib/llm/types";
+import type { AskQuestion, ChatMessage, LlmConfig, LlmProgressEvent, LlmTurnResult, MediaAttachment, ProviderId, UiLanguage } from "@/lib/llm/types";
 import { filesToAttachments } from "@/lib/media";
 import { embedCardInPngDataUrl } from "@/lib/png-card";
 
@@ -80,6 +80,11 @@ type PendingAvatarCrop = {
   offsetY: number;
 };
 
+type LlmStreamEvent = {
+  event: "progress" | "result" | "error" | "message";
+  data: unknown;
+};
+
 export function CardGenerator() {
   const [language, setLanguage] = useState<UiLanguage>(() => getInitialLanguage());
   const t = copy[language];
@@ -102,6 +107,7 @@ export function CardGenerator() {
   const [expiresIn, setExpiresIn] = useState<"1h" | "24h" | "7d">("24h");
   const [step, setStep] = useState(0);
   const [isPending, startTransition] = useTransition();
+  const [isGenerating, setIsGenerating] = useState(false);
   const [hasGenerated, setHasGenerated] = useState(false);
   const [hasGeneratedCard, setHasGeneratedCard] = useState(false);
   const [isCurrentCardShareable, setIsCurrentCardShareable] = useState(false);
@@ -246,7 +252,9 @@ export function CardGenerator() {
     }
 
     setThinking("");
-    setStatus(config.directPreferred ? "生成已开始：正在尝试浏览器直连 LLM..." : "生成已开始：正在通过后端临时代理连接 LLM...");
+    setSearchLogs([]);
+    setIsGenerating(true);
+    setStatus(config.directPreferred ? "正在连接 LLM：优先尝试浏览器直连..." : "正在连接 LLM：通过后端临时代理建立连接...");
 
     const request = {
       config,
@@ -265,33 +273,41 @@ export function CardGenerator() {
 
         if (config.directPreferred) {
           try {
-            result = await sendLlmTurn(request);
+            result = await sendLlmTurn(request, handleLlmProgress);
             applyLlmResult(result, result.action === "ask_user" ? "已连接 LLM，正在确认关键设定。" : "已连接 LLM，卡片草稿生成完成。", "llm");
             return;
           } catch (directError) {
-            setStatus(`直连失败，正在走后端临时代理：${directError instanceof Error ? directError.message : "未知错误"}`);
+            setStatus(`浏览器直连失败，正在改走后端代理继续生成：${directError instanceof Error ? directError.message : "未知错误"}`);
           }
         }
 
-        const response = await fetch("/api/llm", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(request)
-        });
-        const json = await response.json();
-        if (!response.ok) {
-          throw new Error(json.error ?? "LLM 代理请求失败。");
-        }
-
-        const proxiedResult = json as LlmTurnResult;
+        const proxiedResult = await sendProxiedLlmTurn(request, handleLlmProgress);
         applyLlmResult(proxiedResult, proxiedResult.action === "ask_user" ? "代理已连接 LLM，正在确认关键设定。" : "代理已完成生成，卡片已更新。", "llm");
       } catch (llmError) {
         setError(llmError instanceof Error ? llmError.message : "LLM 请求失败。");
         setStatus("生成中断。你可以改用 JSON fallback、换模型，或先用本地草稿。");
+      } finally {
+        setIsGenerating(false);
       }
     });
+  }
+
+  function handleLlmProgress(event: LlmProgressEvent) {
+    switch (event.type) {
+      case "provider_connecting":
+        setStatus(event.round > 0 ? "已拿到搜索资料，正在重新请求 LLM 继续生成..." : "正在连接 LLM，请稍等...");
+        break;
+      case "provider_connected":
+        setStatus("LLM 已连接，正在生成内容。页面没有卡住，可以继续等待首段响应。");
+        break;
+      case "provider_first_byte":
+        setStatus("LLM 已经吐出首段响应，正在整理成角色卡...");
+        break;
+      case "web_search":
+        setSearchLogs((current) => [...current, event.query]);
+        setStatus(`识别到可搜索角色，正在搜索设定和短语气样例：${event.query}`);
+        break;
+    }
   }
 
   function applyLlmResult(result: LlmTurnResult, nextStatus: string, source: HistoryItem["source"] = "llm") {
@@ -1061,8 +1077,8 @@ export function CardGenerator() {
             )}
 
             <div className="inline-row">
-              <button className="button primary" type="button" disabled={isPending} onClick={() => void runGenerator()}>
-                {isPending ? t.generating : hasGenerated ? t.regenerate : t.startGenerate}
+              <button className="button primary" type="button" disabled={isGenerating || isPending} onClick={() => void runGenerator()}>
+                {isGenerating || isPending ? t.generating : hasGenerated ? t.regenerate : t.startGenerate}
               </button>
               <button className="button ghost" type="button" onClick={() => applyLlmResult(makeLocalDraft({ kind: "character", prompt, language, answers }), t.localDraft, "draft")}>
                 {t.localDraft}
@@ -1559,6 +1575,116 @@ function formatStatus(primary: string, detail?: string): string {
   }
 
   return `${primary} ${detail}`;
+}
+
+async function sendProxiedLlmTurn(request: {
+  config: LlmConfig;
+  kind: "character";
+  prompt: string;
+  language: UiLanguage;
+  answers: string;
+  messages: ChatMessage[];
+  media: MediaAttachment[];
+  currentCard: CharacterCardV2;
+}, onProgress: (event: LlmProgressEvent) => void): Promise<LlmTurnResult> {
+  const response = await fetch("/api/llm", {
+    method: "POST",
+    headers: {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(request)
+  });
+
+  if (!response.ok) {
+    const json = await response.json().catch(() => ({}));
+    throw new Error(String((json as Record<string, unknown>).error ?? "LLM 代理请求失败。"));
+  }
+
+  if (!response.body) {
+    const json = await response.json();
+    return json as LlmTurnResult;
+  }
+
+  let finalResult: LlmTurnResult | null = null;
+  for await (const streamEvent of readServerEvents(response.body)) {
+    if (streamEvent.event === "progress") {
+      onProgress(streamEvent.data as LlmProgressEvent);
+      continue;
+    }
+
+    if (streamEvent.event === "result") {
+      finalResult = streamEvent.data as LlmTurnResult;
+      continue;
+    }
+
+    if (streamEvent.event === "error") {
+      const error = streamEvent.data as { error?: string };
+      throw new Error(error.error ?? "LLM 代理请求失败。");
+    }
+  }
+
+  if (!finalResult) {
+    throw new Error("LLM 代理没有返回生成结果。");
+  }
+
+  return finalResult;
+}
+
+async function* readServerEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<LlmStreamEvent> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split(/\n\n/);
+      buffer = parts.pop() ?? "";
+
+      for (const part of parts) {
+        const parsed = parseServerEvent(part);
+        if (parsed) {
+          yield parsed;
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  buffer += decoder.decode();
+  const parsed = parseServerEvent(buffer);
+  if (parsed) {
+    yield parsed;
+  }
+}
+
+function parseServerEvent(raw: string): LlmStreamEvent | null {
+  const lines = raw.split(/\r?\n/);
+  const eventLine = lines.find((line) => line.startsWith("event:"));
+  const dataLines = lines
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice("data:".length).trimStart());
+
+  if (dataLines.length === 0) {
+    return null;
+  }
+
+  const event = eventLine?.slice("event:".length).trim() || "message";
+  if (event !== "progress" && event !== "result" && event !== "error" && event !== "message") {
+    return null;
+  }
+
+  return {
+    event,
+    data: JSON.parse(dataLines.join("\n"))
+  };
 }
 
 function formatHistoryTime(value: number, language: UiLanguage): string {
