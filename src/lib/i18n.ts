@@ -57,6 +57,9 @@ export type AppStrings = {
   startGenerate: string;
   regenerate: string;
   generating: string;
+  errorDetails: string;
+  copyErrorDetails: string;
+  copiedErrorDetails: string;
   localDraft: string;
   thinkingSummary: string;
   searchLog: string;
@@ -147,6 +150,9 @@ export const copy: Record<UiLanguage, AppStrings> = {
     startGenerate: "连接 LLM 并开始生成",
     regenerate: "重新生成角色卡",
     generating: "正在连接并生成...",
+    errorDetails: "完整错误信息",
+    copyErrorDetails: "复制错误",
+    copiedErrorDetails: "错误信息已复制。",
     localDraft: "本地草稿",
     thinkingSummary: "查看模型思考摘要",
     searchLog: "网络搜索记录",
@@ -229,6 +235,9 @@ export const copy: Record<UiLanguage, AppStrings> = {
     startGenerate: "Connect LLM and generate",
     regenerate: "Regenerate card",
     generating: "Connecting and generating...",
+    errorDetails: "Full error details",
+    copyErrorDetails: "Copy error",
+    copiedErrorDetails: "Error details copied.",
     localDraft: "Local draft",
     thinkingSummary: "View model summary",
     searchLog: "Search log",
@@ -311,6 +320,9 @@ export const copy: Record<UiLanguage, AppStrings> = {
     startGenerate: "LLM に接続して生成",
     regenerate: "カードを再生成",
     generating: "接続して生成中...",
+    errorDetails: "完全なエラー情報",
+    copyErrorDetails: "エラーをコピー",
+    copiedErrorDetails: "エラー情報をコピーしました。",
     localDraft: "ローカル下書き",
     thinkingSummary: "モデル要約を見る",
     searchLog: "検索履歴",

@@ -444,6 +444,12 @@ a {
   box-shadow: var(--shadow-sm);
 }
 
+.button.compact {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 0.78rem;
+}
+
 .button.danger {
   color: var(--rose);
 }
@@ -880,6 +886,43 @@ a {
   color: var(--rose);
 }
 
+.error-details {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--rose) 24%, var(--line));
+}
+
+.error-details summary {
+  width: fit-content;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.error-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 10px 0 8px;
+}
+
+.error-details pre {
+  max-height: 280px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
 .stage-nav {
   display: flex;
   gap: 12px;
@@ -996,5 +1039,4 @@ a {
     flex: 1;
   }
 }
-
 

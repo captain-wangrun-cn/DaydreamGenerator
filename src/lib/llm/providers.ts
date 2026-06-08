@@ -7,6 +7,18 @@ import type { LlmProgressListener, LlmTurnOrSearchResult, LlmTurnRequest, LlmTur
 
 type WebSearchExecutor = (query: string, clientKey?: string) => Promise<WebSearchResultItem[]>;
 
+export class LlmRequestError extends Error {
+  readonly detail: string;
+  readonly status?: number;
+
+  constructor(message: string, detail: string, status?: number) {
+    super(message);
+    this.name = "LlmRequestError";
+    this.detail = detail;
+    this.status = status;
+  }
+}
+
 export function buildProviderPayload(request: LlmTurnRequest): ProviderPayload {
   switch (request.config.provider) {
     case "openai":
@@ -34,17 +46,44 @@ export async function sendLlmTurn(
   for (let round = 0; round <= maxSearchRounds; round++) {
     const payload = buildProviderPayload(request);
     await onProgress?.({ type: "provider_connecting", round });
-    const { response, json } = await fetchLlmWithRetry(payload.url, payload.init, {
-      onConnected: (status) => onProgress?.({ type: "provider_connected", round, status }),
-      onFirstByte: () => onProgress?.({ type: "provider_first_byte", round })
-    });
+    let fetched: { response: Response; json: unknown; responseText: string };
+    try {
+      fetched = await fetchLlmWithRetry(payload.url, payload.init, {
+        onConnected: (status) => onProgress?.({ type: "provider_connected", round, status }),
+        onFirstByte: () => onProgress?.({ type: "provider_first_byte", round })
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Network request failed.";
+      throw new LlmRequestError(
+        `LLM request failed: ${message}`,
+        formatProviderRequestFailureDetail(payload.url, request.config.provider, error)
+      );
+    }
+
+    const { response, json, responseText } = fetched;
 
     if (!response.ok) {
       const message = extractProviderError(json) ?? response.statusText;
-      throw new Error(`LLM request failed: ${message}`);
+      throw new LlmRequestError(
+        `LLM request failed: ${message}`,
+        formatProviderErrorDetail(payload.url, request.config.provider, response, responseText, json),
+        response.status
+      );
     }
 
-    const result = enforceInterviewBeforeSubmit(payload.parser(json, request.kind), request);
+    let parsed: LlmTurnOrSearchResult;
+    try {
+      parsed = payload.parser(json, request.kind);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "LLM response parsing failed.";
+      throw new LlmRequestError(
+        `LLM response parsing failed: ${message}`,
+        formatProviderErrorDetail(payload.url, request.config.provider, response, responseText, json, error),
+        response.status
+      );
+    }
+
+    const result = enforceInterviewBeforeSubmit(parsed, request);
 
     if (result.action !== "web_search") {
       if (searches.length > 0) {
@@ -91,7 +130,7 @@ export async function fetchLlmWithRetry(
     onConnected?: (status: number) => void | Promise<void>;
     onFirstByte?: () => void | Promise<void>;
   } = {}
-): Promise<{ response: Response; json: unknown }> {
+): Promise<{ response: Response; json: unknown; responseText: string }> {
   const retries = options.retries ?? 2;
   const baseDelayMs = options.baseDelayMs ?? 600;
   let lastError: unknown;
@@ -101,10 +140,10 @@ export async function fetchLlmWithRetry(
       const response = await fetch(url, init);
       await options.onConnected?.(response.status);
       const responseText = await readResponseText(response, response.ok ? options.onFirstByte : undefined);
-      const json = responseText ? JSON.parse(responseText) : {};
+      const json = parseResponseJson(responseText);
 
       if (response.ok || !RETRYABLE_STATUS.has(response.status) || attempt === retries) {
-        return { response, json };
+        return { response, json, responseText };
       }
     } catch (error) {
       lastError = error;
@@ -118,6 +157,18 @@ export async function fetchLlmWithRetry(
   }
 
   throw lastError instanceof Error ? lastError : new Error("LLM request failed after retries.");
+}
+
+function parseResponseJson(responseText: string): unknown {
+  if (!responseText) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(responseText);
+  } catch {
+    return responseText;
+  }
 }
 
 async function readResponseText(response: Response, onFirstByte?: () => void | Promise<void>): Promise<string> {
@@ -470,6 +521,83 @@ function extractProviderError(value: unknown): string | null {
   }
 
   return null;
+}
+
+function formatProviderErrorDetail(
+  url: string,
+  provider: LlmTurnRequest["config"]["provider"],
+  response: Response,
+  responseText: string,
+  json: unknown,
+  cause?: unknown
+): string {
+  const sections = [
+    `Provider: ${provider}`,
+    `Endpoint: ${redactSensitiveUrl(url)}`,
+    `HTTP status: ${response.status} ${response.statusText || ""}`.trim()
+  ];
+
+  const causeText = formatUnknownError(cause);
+  if (causeText) {
+    sections.push(`Local error:\n${causeText}`);
+  }
+
+  if (responseText) {
+    sections.push(`Raw response body:\n${responseText}`);
+  }
+
+  const parsedText = typeof json === "string" ? "" : safeStringify(json);
+  if (parsedText && parsedText !== responseText) {
+    sections.push(`Parsed response JSON:\n${parsedText}`);
+  }
+
+  return sections.join("\n\n");
+}
+
+function formatProviderRequestFailureDetail(
+  url: string,
+  provider: LlmTurnRequest["config"]["provider"],
+  cause: unknown
+): string {
+  return [
+    `Provider: ${provider}`,
+    `Endpoint: ${redactSensitiveUrl(url)}`,
+    `Network/local error:\n${formatUnknownError(cause) || "Unknown request failure."}`
+  ].join("\n\n");
+}
+
+function redactSensitiveUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    for (const key of parsed.searchParams.keys()) {
+      if (/key|token|secret|password/i.test(key)) {
+        parsed.searchParams.set(key, "[redacted]");
+      }
+    }
+    return parsed.toString();
+  } catch {
+    return url.replace(/([?&][^=]*(?:key|token|secret|password)[^=]*=)[^&\s]+/gi, "$1[redacted]");
+  }
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function formatUnknownError(error: unknown): string {
+  if (!error) {
+    return "";
+  }
+
+  if (error instanceof Error) {
+    return error.stack || error.message;
+  }
+
+  return typeof error === "string" ? error : safeStringify(error);
 }
 
 function getArray(value: unknown): unknown[] {

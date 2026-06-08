@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { cardKindSchema, characterCardV2Schema } from "@/lib/card-schema";
-import { sendLlmTurn } from "@/lib/llm/providers";
+import { LlmRequestError, sendLlmTurn } from "@/lib/llm/providers";
 import type { LlmProgressEvent, LlmTurnRequest, LlmTurnResult, WebSearchResultItem } from "@/lib/llm/types";
 
 export const runtime = "nodejs";
@@ -48,9 +48,9 @@ export async function POST(request: Request) {
     const result = await sendLlmTurn(body, undefined, { search: serverSearch });
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown LLM proxy error.";
+    const { message, detail } = formatLlmProxyError(error);
     return NextResponse.json(
-      { error: message },
+      { error: message, detail },
       { status: message.startsWith("LLM request failed:") ? 502 : 400 }
     );
   }
@@ -61,7 +61,7 @@ function streamLlmTurn(body: LlmTurnRequest): Response {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: "progress" | "result" | "error", data: LlmProgressEvent | LlmTurnResult | { error: string }) => {
+      const send = (event: "progress" | "result" | "error", data: LlmProgressEvent | LlmTurnResult | { error: string; detail?: string }) => {
         controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       };
 
@@ -69,7 +69,8 @@ function streamLlmTurn(body: LlmTurnRequest): Response {
         const result = await sendLlmTurn(body, (event) => send("progress", event), { search: serverSearch });
         send("result", result);
       } catch (error) {
-        send("error", { error: error instanceof Error ? error.message : "Unknown LLM proxy error." });
+        const { message, detail } = formatLlmProxyError(error);
+        send("error", { error: message, detail });
       } finally {
         controller.close();
       }
@@ -83,6 +84,27 @@ function streamLlmTurn(body: LlmTurnRequest): Response {
       Connection: "keep-alive"
     }
   });
+}
+
+function formatLlmProxyError(error: unknown): { message: string; detail: string } {
+  if (error instanceof LlmRequestError) {
+    return {
+      message: error.message,
+      detail: error.detail || error.stack || error.message
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      detail: error.stack || error.message
+    };
+  }
+
+  return {
+    message: "Unknown LLM proxy error.",
+    detail: String(error)
+  };
 }
 
 async function serverSearch(query: string, clientKey?: string): Promise<WebSearchResultItem[]> {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createEmptyCard, isShareableCard, normalizeCard, type CharacterCardV2 } from "@/lib/card-schema";
 import { copy, isUiLanguage, languageOptions, uiLocale } from "@/lib/i18n";
-import { sendLlmTurn, makeLocalDraft, unsupportedMediaWarning } from "@/lib/llm/providers";
+import { LlmRequestError, sendLlmTurn, makeLocalDraft, unsupportedMediaWarning } from "@/lib/llm/providers";
 import type { AskQuestion, ChatMessage, LlmConfig, LlmProgressEvent, LlmTurnResult, MediaAttachment, ProviderId, UiLanguage } from "@/lib/llm/types";
 import { filesToAttachments } from "@/lib/media";
 import { embedCardInPngDataUrl } from "@/lib/png-card";
@@ -85,6 +85,21 @@ type LlmStreamEvent = {
   data: unknown;
 };
 
+type LlmErrorInfo = {
+  message: string;
+  detail: string;
+};
+
+class LlmClientError extends Error {
+  readonly detail: string;
+
+  constructor(message: string, detail: string) {
+    super(message);
+    this.name = "LlmClientError";
+    this.detail = detail;
+  }
+}
+
 export function CardGenerator() {
   const [language, setLanguage] = useState<UiLanguage>(() => getInitialLanguage());
   const t = copy[language];
@@ -100,7 +115,9 @@ export function CardGenerator() {
   const [jsonText, setJsonText] = useState(() => JSON.stringify(createEmptyCard("character"), null, 2));
   const [interview, setInterview] = useState<InterviewState | null>(null);
   const [status, setStatus] = useState(t.ready);
-  const [error, setError] = useState("");
+  const [error, setErrorMessage] = useState("");
+  const [errorDetail, setErrorDetail] = useState("");
+  const [errorDetailCopied, setErrorDetailCopied] = useState(false);
   const [share, setShare] = useState<ShareResponse | null>(null);
   const [historyShareBusyId, setHistoryShareBusyId] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -125,6 +142,12 @@ export function CardGenerator() {
   const firstReferenceVideo = useMemo(() => referenceMedia.find((item) => item.kind === "video"), [referenceMedia]);
   const activeQuestion = interview?.questions[interview.currentIndex];
   const activeAnswer = interview ? interview.answers[interview.currentIndex] ?? "" : "";
+
+  function setError(message: string, detail = "") {
+    setErrorMessage(message);
+    setErrorDetail(message ? detail : "");
+    setErrorDetailCopied(false);
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem(CONFIG_STORAGE_KEY);
@@ -268,6 +291,8 @@ export function CardGenerator() {
     };
 
     startTransition(async () => {
+      let directFailure: LlmErrorInfo | null = null;
+
       try {
         let result: LlmTurnResult;
 
@@ -277,14 +302,16 @@ export function CardGenerator() {
             applyLlmResult(result, result.action === "ask_user" ? "已连接 LLM，正在确认关键设定。" : "已连接 LLM，卡片草稿生成完成。", "llm");
             return;
           } catch (directError) {
-            setStatus(`浏览器直连失败，正在改走后端代理继续生成：${directError instanceof Error ? directError.message : "未知错误"}`);
+            directFailure = formatLlmErrorInfo(directError);
+            setStatus(`浏览器直连失败，正在改走后端代理继续生成：${directFailure.message}`);
           }
         }
 
         const proxiedResult = await sendProxiedLlmTurn(request, handleLlmProgress);
         applyLlmResult(proxiedResult, proxiedResult.action === "ask_user" ? "代理已连接 LLM，正在确认关键设定。" : "代理已完成生成，卡片已更新。", "llm");
       } catch (llmError) {
-        setError(llmError instanceof Error ? llmError.message : "LLM 请求失败。");
+        const failure = formatLlmErrorInfo(llmError);
+        setError(failure.message, combineLlmErrorDetails(failure, directFailure));
         setStatus("生成中断。你可以改用 JSON fallback、换模型，或先用本地草稿。");
       } finally {
         setIsGenerating(false);
@@ -308,6 +335,16 @@ export function CardGenerator() {
         setStatus(`识别到可搜索角色，正在搜索设定和短语气样例：${event.query}`);
         break;
     }
+  }
+
+  async function copyCurrentErrorDetail() {
+    const text = errorDetail || error;
+    if (!text) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(text);
+    setErrorDetailCopied(true);
   }
 
   function applyLlmResult(result: LlmTurnResult, nextStatus: string, source: HistoryItem["source"] = "llm") {
@@ -842,6 +879,17 @@ export function CardGenerator() {
 
         <div className={`status-bar ${error ? "error" : ""}`}>
           <p className="status-line">{error || status}</p>
+          {errorDetail && (
+            <details className="error-details">
+              <summary>{t.errorDetails}</summary>
+              <div className="error-detail-actions">
+                <button className="button ghost compact" type="button" onClick={() => void copyCurrentErrorDetail()}>
+                  {errorDetailCopied ? t.copiedErrorDetails : t.copyErrorDetails}
+                </button>
+              </div>
+              <pre>{errorDetail}</pre>
+            </details>
+          )}
         </div>
 
         <div className="form-grid">
@@ -1577,6 +1625,47 @@ function formatStatus(primary: string, detail?: string): string {
   return `${primary} ${detail}`;
 }
 
+function formatLlmErrorInfo(error: unknown): LlmErrorInfo {
+  if (error instanceof LlmRequestError || error instanceof LlmClientError) {
+    return {
+      message: error.message,
+      detail: error.detail || error.stack || error.message
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      detail: error.stack || error.message
+    };
+  }
+
+  const text = typeof error === "string" ? error : safeStringify(error);
+  return {
+    message: text || "LLM 请求失败。",
+    detail: text || "LLM 请求失败。"
+  };
+}
+
+function combineLlmErrorDetails(failure: LlmErrorInfo, directFailure: LlmErrorInfo | null): string {
+  if (!directFailure) {
+    return failure.detail;
+  }
+
+  return [
+    `Browser direct attempt failed:\n${directFailure.detail}`,
+    `Backend proxy attempt failed:\n${failure.detail}`
+  ].join("\n\n---\n\n");
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 async function sendProxiedLlmTurn(request: {
   config: LlmConfig;
   kind: "character";
@@ -1598,7 +1687,11 @@ async function sendProxiedLlmTurn(request: {
 
   if (!response.ok) {
     const json = await response.json().catch(() => ({}));
-    throw new Error(String((json as Record<string, unknown>).error ?? "LLM 代理请求失败。"));
+    const error = isRecord(json) ? json : {};
+    throw new LlmClientError(
+      String(error.error ?? "LLM 代理请求失败。"),
+      String(error.detail ?? error.error ?? safeStringify(json))
+    );
   }
 
   if (!response.body) {
@@ -1619,8 +1712,11 @@ async function sendProxiedLlmTurn(request: {
     }
 
     if (streamEvent.event === "error") {
-      const error = streamEvent.data as { error?: string };
-      throw new Error(error.error ?? "LLM 代理请求失败。");
+      const error = isRecord(streamEvent.data) ? streamEvent.data : {};
+      throw new LlmClientError(
+        String(error.error ?? "LLM 代理请求失败。"),
+        String(error.detail ?? error.error ?? safeStringify(streamEvent.data))
+      );
     }
   }
 
@@ -1685,6 +1781,10 @@ function parseServerEvent(raw: string): LlmStreamEvent | null {
     event,
     data: JSON.parse(dataLines.join("\n"))
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function formatHistoryTime(value: number, language: UiLanguage): string {
