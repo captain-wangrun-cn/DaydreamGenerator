@@ -13,6 +13,14 @@ export function openAiTools() {
     {
       type: "function",
       function: {
+        name: "web_fetch",
+        description: "Fetch and read the content of a specific URL as markdown text. Use after web_search to read detailed wiki pages, quote pages, or character profiles. Returns up to 2000 characters of page content.",
+        parameters: webFetchParameters()
+      }
+    },
+    {
+      type: "function",
+      function: {
         name: "ask_user",
         description: "Ask the user 1 to 3 concrete follow-up questions with at least 3 selectable options before making the card.",
         parameters: askUserParameters()
@@ -37,6 +45,11 @@ export function anthropicTools() {
       input_schema: webSearchParameters()
     },
     {
+      name: "web_fetch",
+      description: "Fetch and read the content of a specific URL as markdown text. Use after web_search to read detailed wiki pages, quote pages, or character profiles. Returns up to 2000 characters of page content.",
+      input_schema: webFetchParameters()
+    },
+    {
       name: "ask_user",
       description: "Ask the user 1 to 3 concrete follow-up questions with at least 3 selectable options before making the card.",
       input_schema: askUserParameters()
@@ -57,6 +70,11 @@ export function geminiTools() {
           name: "web_search",
           description: "Search the web for information about a character, franchise, scenario, cultural reference, quotes, voice lines, catchphrases, or speaking style to improve card accuracy.",
           parameters: webSearchParameters()
+        },
+        {
+          name: "web_fetch",
+          description: "Fetch and read the content of a specific URL as markdown text. Use after web_search to read detailed wiki pages, quote pages, or character profiles. Returns up to 2000 characters of page content.",
+          parameters: webFetchParameters()
         },
         {
           name: "ask_user",
@@ -84,6 +102,20 @@ function webSearchParameters() {
       }
     },
     required: ["query"]
+  };
+}
+
+function webFetchParameters() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      url: {
+        type: "string",
+        description: "A full URL to fetch and read the page content as markdown."
+      }
+    },
+    required: ["url"]
   };
 }
 

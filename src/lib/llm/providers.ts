@@ -6,6 +6,7 @@ import { parseFallbackJson, parseLooseJson, parseToolResult } from "@/lib/llm/pa
 import type { LlmProgressListener, LlmTurnOrSearchResult, LlmTurnRequest, LlmTurnResult, MediaAttachment, ProviderPayload, WebSearchResultItem } from "@/lib/llm/types";
 
 type WebSearchExecutor = (query: string, clientKey?: string) => Promise<WebSearchResultItem[]>;
+type WebFetchExecutor = (url: string) => Promise<string>;
 
 export class LlmRequestError extends Error {
   readonly detail: string;
@@ -37,11 +38,12 @@ export function buildProviderPayload(request: LlmTurnRequest): ProviderPayload {
 export async function sendLlmTurn(
   request: LlmTurnRequest,
   onProgress?: LlmProgressListener,
-  options: { search?: WebSearchExecutor } = {}
+  options: { search?: WebSearchExecutor; fetch?: WebFetchExecutor } = {}
 ): Promise<LlmTurnResult> {
   const maxSearchRounds = 3;
   const searches: string[] = [];
   const search = options.search ?? executeWebSearch;
+  const fetchPage = options.fetch ?? executeWebFetch;
 
   for (let round = 0; round <= maxSearchRounds; round++) {
     const payload = buildProviderPayload(request);
@@ -85,7 +87,7 @@ export async function sendLlmTurn(
 
     const result = enforceInterviewBeforeSubmit(parsed, request);
 
-    if (result.action !== "web_search") {
+    if (result.action !== "web_search" && result.action !== "web_fetch") {
       if (searches.length > 0) {
         result.searches = searches;
       }
@@ -96,19 +98,34 @@ export async function sendLlmTurn(
       throw new Error("LLM exceeded maximum search rounds.");
     }
 
-    searches.push(result.query);
-    await onProgress?.({ type: "web_search", round, query: result.query });
-    const searchResults = await search(result.query, request.config.tavilyKey);
-    const searchSummary = formatSearchResults(searchResults);
+    if (result.action === "web_search") {
+      searches.push(result.query);
+      await onProgress?.({ type: "web_search", round, query: result.query });
+      const searchResults = await search(result.query, request.config.tavilyKey);
+      const searchSummary = formatSearchResults(searchResults);
 
-    request = {
-      ...request,
-      messages: [
-        ...request.messages,
-        { role: "assistant", content: `[web_search: ${result.query}]` },
-        { role: "user", content: `搜索结果：\n${searchSummary}\n\n请根据以上搜索结果继续生成角色卡，或提出更多问题。` }
-      ]
-    };
+      request = {
+        ...request,
+        messages: [
+          ...request.messages,
+          { role: "assistant", content: `[web_search: ${result.query}]` },
+          { role: "user", content: `搜索结果：\n${searchSummary}\n\n请根据以上搜索结果继续生成角色卡，或提出更多问题。` }
+        ]
+      };
+    } else {
+      searches.push(`[fetch] ${result.url}`);
+      await onProgress?.({ type: "web_fetch", round, url: result.url });
+      const fetchContent = await fetchPage(result.url);
+
+      request = {
+        ...request,
+        messages: [
+          ...request.messages,
+          { role: "assistant", content: `[web_fetch: ${result.url}]` },
+          { role: "user", content: `网页内容：\n${fetchContent || "未能获取到内容。"}\n\n请根据以上网页内容继续生成角色卡，或提出更多问题。` }
+        ]
+      };
+    }
   }
 
   throw new Error("Unexpected end of search loop.");
@@ -221,6 +238,23 @@ export async function executeWebSearch(query: string, clientKey?: string): Promi
 
   const data = await response.json();
   return (data as { results: WebSearchResultItem[] }).results ?? [];
+}
+
+export async function executeWebFetch(url: string): Promise<string> {
+  const response = await fetch("/api/fetch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url })
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const message = (data as Record<string, unknown>)?.error ?? "Fetch failed";
+    throw new Error(String(message));
+  }
+
+  const data = await response.json();
+  return (data as { content: string }).content ?? "";
 }
 
 export function formatSearchResults(results: WebSearchResultItem[]): string {
@@ -631,7 +665,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function withThinking(result: LlmTurnOrSearchResult, thinking?: string): LlmTurnOrSearchResult {
   const normalized = normalizeReasoningText(thinking);
-  if (!normalized || result.action === "web_search" || result.thinking) {
+  if (!normalized || result.action === "web_search" || result.action === "web_fetch" || result.thinking) {
     return result;
   }
 

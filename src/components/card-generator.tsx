@@ -334,6 +334,10 @@ export function CardGenerator() {
         setSearchLogs((current) => [...current, event.query]);
         setStatus(`识别到可搜索角色，正在搜索设定和短语气样例：${event.query}`);
         break;
+      case "web_fetch":
+        setSearchLogs((current) => [...current, `[fetch] ${event.url}`]);
+        setStatus(`正在读取网页内容：${event.url}`);
+        break;
     }
   }
 
@@ -479,13 +483,8 @@ export function CardGenerator() {
     }
 
     const nextAnswers = [...interview.answers];
-    const committed = interview.customAnswer.trim() || nextAnswers[interview.currentIndex];
+    const committed = interview.customAnswer.trim() || nextAnswers[interview.currentIndex] || "";
     nextAnswers[interview.currentIndex] = committed;
-
-    if (!committed) {
-      setStatus("请先选择一个答案，或写一个自定义回答。");
-      return;
-    }
 
     if (interview.currentIndex < interview.questions.length - 1) {
       setInterview({
@@ -494,7 +493,7 @@ export function CardGenerator() {
         currentIndex: interview.currentIndex + 1,
         customAnswer: ""
       });
-      setStatus("已记录这一题，继续下一题。");
+      setStatus(committed ? "已记录这一题，继续下一题。" : "已跳过这一题。");
       return;
     }
 

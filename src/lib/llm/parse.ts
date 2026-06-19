@@ -12,6 +12,13 @@ export function parseFallbackJson(text: string, kind: CardKind): LlmTurnOrSearch
     };
   }
 
+  if (parsed.action === "web_fetch" && typeof parsed.url === "string") {
+    return {
+      action: "web_fetch",
+      url: parsed.url.trim()
+    };
+  }
+
   if (parsed.action === "ask_user") {
     return {
       action: "ask_user",
@@ -39,6 +46,13 @@ export function parseToolResult(name: string, args: unknown, kind: CardKind): Ll
     return {
       action: "web_search",
       query: args.query.trim()
+    };
+  }
+
+  if (name === "web_fetch" && isRecord(args) && typeof args.url === "string") {
+    return {
+      action: "web_fetch",
+      url: args.url.trim()
     };
   }
 

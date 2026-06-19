@@ -45,7 +45,8 @@ export type LlmProgressEvent =
   | { type: "provider_connecting"; round: number }
   | { type: "provider_connected"; round: number; status: number }
   | { type: "provider_first_byte"; round: number }
-  | { type: "web_search"; round: number; query: string };
+  | { type: "web_search"; round: number; query: string }
+  | { type: "web_fetch"; round: number; url: string };
 
 export type LlmProgressListener = (event: LlmProgressEvent) => void | Promise<void>;
 
@@ -84,13 +85,18 @@ export type WebSearchCall = {
   query: string;
 };
 
+export type WebFetchCall = {
+  action: "web_fetch";
+  url: string;
+};
+
 export type WebSearchResultItem = {
   title: string;
   url: string;
   content: string;
 };
 
-export type LlmTurnOrSearchResult = LlmTurnResult | WebSearchCall;
+export type LlmTurnOrSearchResult = LlmTurnResult | WebSearchCall | WebFetchCall;
 
 export type ProviderPayload = {
   url: string;

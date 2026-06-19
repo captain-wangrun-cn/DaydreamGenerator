@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       return streamLlmTurn(body);
     }
 
-    const result = await sendLlmTurn(body, undefined, { search: serverSearch });
+    const result = await sendLlmTurn(body, undefined, { search: serverSearch, fetch: serverFetch });
     return NextResponse.json(result);
   } catch (error) {
     const { message, detail } = formatLlmProxyError(error);
@@ -66,7 +66,7 @@ function streamLlmTurn(body: LlmTurnRequest): Response {
       };
 
       try {
-        const result = await sendLlmTurn(body, (event) => send("progress", event), { search: serverSearch });
+        const result = await sendLlmTurn(body, (event) => send("progress", event), { search: serverSearch, fetch: serverFetch });
         send("result", result);
       } catch (error) {
         const { message, detail } = formatLlmProxyError(error);
@@ -138,5 +138,33 @@ async function serverSearch(query: string, clientKey?: string): Promise<WebSearc
     }));
   } catch {
     return [];
+  }
+}
+
+async function serverFetch(url: string): Promise<string> {
+  try {
+    const jinaUrl = `https://r.jina.ai/${url}`;
+    const headers: Record<string, string> = {
+      Accept: "text/markdown"
+    };
+
+    const jinaKey = process.env.JINA_API_KEY;
+    if (jinaKey) {
+      headers["Authorization"] = `Bearer ${jinaKey}`;
+    }
+
+    const response = await fetch(jinaUrl, {
+      headers,
+      signal: AbortSignal.timeout(15000)
+    });
+
+    if (!response.ok) {
+      return "";
+    }
+
+    const text = await response.text();
+    return text.slice(0, 2000);
+  } catch {
+    return "";
   }
 }
