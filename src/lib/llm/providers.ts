@@ -52,9 +52,14 @@ export async function sendLlmTurn(
     try {
       fetched = await fetchLlmWithRetry(payload.url, payload.init, {
         onConnected: (status) => onProgress?.({ type: "provider_connected", round, status }),
-        onFirstByte: () => onProgress?.({ type: "provider_first_byte", round })
+        onFirstByte: () => onProgress?.({ type: "provider_first_byte", round }),
+        onChunk: (chunk) => onProgress?.({ type: "token", text: chunk })
       });
     } catch (error) {
+      // Emit checkpoint so frontend can resume from accumulated search context
+      if (searches.length > 0) {
+        await onProgress?.({ type: "search_progress", searches: [...searches], messages: [...request.messages] });
+      }
       const message = error instanceof Error ? error.message : "Network request failed.";
       throw new LlmRequestError(
         `LLM request failed: ${message}`,
@@ -65,6 +70,9 @@ export async function sendLlmTurn(
     const { response, json, responseText } = fetched;
 
     if (!response.ok) {
+      if (searches.length > 0) {
+        await onProgress?.({ type: "search_progress", searches: [...searches], messages: [...request.messages] });
+      }
       const message = extractProviderError(json) ?? response.statusText;
       throw new LlmRequestError(
         `LLM request failed: ${message}`,
@@ -77,6 +85,9 @@ export async function sendLlmTurn(
     try {
       parsed = payload.parser(json, request.kind);
     } catch (error) {
+      if (searches.length > 0) {
+        await onProgress?.({ type: "search_progress", searches: [...searches], messages: [...request.messages] });
+      }
       const message = error instanceof Error ? error.message : "LLM response parsing failed.";
       throw new LlmRequestError(
         `LLM response parsing failed: ${message}`,
@@ -126,6 +137,9 @@ export async function sendLlmTurn(
         ]
       };
     }
+
+    // Emit checkpoint after successful search round
+    await onProgress?.({ type: "search_progress", searches: [...searches], messages: [...request.messages] });
   }
 
   throw new Error("Unexpected end of search loop.");
@@ -146,6 +160,7 @@ export async function fetchLlmWithRetry(
     baseDelayMs?: number;
     onConnected?: (status: number) => void | Promise<void>;
     onFirstByte?: () => void | Promise<void>;
+    onChunk?: (chunk: string) => void | Promise<void>;
   } = {}
 ): Promise<{ response: Response; json: unknown; responseText: string }> {
   const retries = options.retries ?? 2;
@@ -156,7 +171,10 @@ export async function fetchLlmWithRetry(
     try {
       const response = await fetch(url, init);
       await options.onConnected?.(response.status);
-      const responseText = await readResponseText(response, response.ok ? options.onFirstByte : undefined);
+      const responseText = await readResponseText(response, {
+        onFirstByte: response.ok ? options.onFirstByte : undefined,
+        onChunk: response.ok ? options.onChunk : undefined
+      });
       const json = parseResponseJson(responseText);
 
       if (response.ok || !RETRYABLE_STATUS.has(response.status) || attempt === retries) {
@@ -188,11 +206,15 @@ function parseResponseJson(responseText: string): unknown {
   }
 }
 
-async function readResponseText(response: Response, onFirstByte?: () => void | Promise<void>): Promise<string> {
+async function readResponseText(
+  response: Response,
+  options: { onFirstByte?: () => void | Promise<void>; onChunk?: (chunk: string) => void | Promise<void> } = {}
+): Promise<string> {
   if (!response.body) {
     const text = await response.text();
     if (text) {
-      await onFirstByte?.();
+      await options.onFirstByte?.();
+      await options.onChunk?.(text);
     }
     return text;
   }
@@ -211,9 +233,11 @@ async function readResponseText(response: Response, onFirstByte?: () => void | P
 
       if (!sawChunk) {
         sawChunk = true;
-        await onFirstByte?.();
+        await options.onFirstByte?.();
       }
-      text += decoder.decode(value, { stream: true });
+      const chunk = decoder.decode(value, { stream: true });
+      text += chunk;
+      await options.onChunk?.(chunk);
     }
   } finally {
     reader.releaseLock();

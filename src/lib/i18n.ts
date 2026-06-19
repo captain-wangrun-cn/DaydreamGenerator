@@ -84,6 +84,12 @@ export type AppStrings = {
   prevStep: string;
   nextStep: string;
   footer: string;
+  saveCard: string;
+  streamPreview: string;
+  retryFromCheckpoint: string;
+  fetchModels: string;
+  fetchingModels: string;
+  selectModel: string;
 };
 
 export const languageOptions: LanguageOption[] = [
@@ -176,7 +182,13 @@ export const copy: Record<UiLanguage, AppStrings> = {
     sevenDays: "7 天",
     prevStep: "上一步",
     nextStep: "下一步",
-    footer: "提醒：参考素材用于生成语义，头像用于导出文件。浏览器缓存 key 适合个人工具；如果公开部署给别人使用，请让每个用户填写自己的 key。"
+    footer: "提醒：参考素材用于生成语义，头像用于导出文件。浏览器缓存 key 适合个人工具；如果公开部署给别人使用，请让每个用户填写自己的 key。",
+    saveCard: "保存",
+    streamPreview: "AI 实时输出",
+    retryFromCheckpoint: "从搜索进度重试",
+    fetchModels: "获取模型列表",
+    fetchingModels: "正在获取模型...",
+    selectModel: "选择模型"
   },
   "en-US": {
     steps: [
@@ -261,7 +273,13 @@ export const copy: Record<UiLanguage, AppStrings> = {
     sevenDays: "7 days",
     prevStep: "Previous",
     nextStep: "Next",
-    footer: "Note: references are used for generation context; avatar is used for exported files. Browser-cached keys are best for personal tools."
+    footer: "Note: references are used for generation context; avatar is used for exported files. Browser-cached keys are best for personal tools.",
+    saveCard: "Save",
+    streamPreview: "AI live output",
+    retryFromCheckpoint: "Retry from checkpoint",
+    fetchModels: "Fetch models",
+    fetchingModels: "Fetching models...",
+    selectModel: "Select model"
   },
   "ja-JP": {
     steps: [
@@ -346,7 +364,13 @@ export const copy: Record<UiLanguage, AppStrings> = {
     sevenDays: "7 日",
     prevStep: "前へ",
     nextStep: "次へ",
-    footer: "注意：参考素材は生成文脈に、头像は出力ファイルに使います。ブラウザ保存 key は個人利用向きです。"
+    footer: "注意：参考素材は生成文脈に、头像は出力ファイルに使います。ブラウザ保存 key は個人利用向きです。",
+    saveCard: "保存",
+    streamPreview: "AI リアルタイム出力",
+    retryFromCheckpoint: "チェックポイントから再試行",
+    fetchModels: "モデル一覧を取得",
+    fetchingModels: "モデル取得中...",
+    selectModel: "モデルを選択"
   }
 };
 

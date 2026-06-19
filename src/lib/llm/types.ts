@@ -46,7 +46,9 @@ export type LlmProgressEvent =
   | { type: "provider_connected"; round: number; status: number }
   | { type: "provider_first_byte"; round: number }
   | { type: "web_search"; round: number; query: string }
-  | { type: "web_fetch"; round: number; url: string };
+  | { type: "web_fetch"; round: number; url: string }
+  | { type: "token"; text: string }
+  | { type: "search_progress"; searches: string[]; messages: ChatMessage[] };
 
 export type LlmProgressListener = (event: LlmProgressEvent) => void | Promise<void>;
 

@@ -130,6 +130,10 @@ export function CardGenerator() {
   const [isCurrentCardShareable, setIsCurrentCardShareable] = useState(false);
   const [searchLogs, setSearchLogs] = useState<string[]>([]);
   const [thinking, setThinking] = useState("");
+  const [streamedText, setStreamedText] = useState("");
+  const [lastCheckpoint, setLastCheckpoint] = useState<{ searches: string[]; messages: ChatMessage[] } | null>(null);
+  const [availableModels, setAvailableModels] = useState<string[] | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(false);
   const [theme, setTheme] = useState<"auto" | "light" | "dark">(() => {
     if (typeof window === "undefined") return "auto";
     const saved = localStorage.getItem("theme");
@@ -276,6 +280,8 @@ export function CardGenerator() {
 
     setThinking("");
     setSearchLogs([]);
+    setStreamedText("");
+    setLastCheckpoint(null);
     setIsGenerating(true);
     setStatus(config.directPreferred ? "正在连接 LLM：优先尝试浏览器直连..." : "正在连接 LLM：通过后端临时代理建立连接...");
 
@@ -338,6 +344,12 @@ export function CardGenerator() {
         setSearchLogs((current) => [...current, `[fetch] ${event.url}`]);
         setStatus(`正在读取网页内容：${event.url}`);
         break;
+      case "token":
+        setStreamedText((current) => current + event.text);
+        break;
+      case "search_progress":
+        setLastCheckpoint({ searches: event.searches, messages: event.messages });
+        break;
     }
   }
 
@@ -389,15 +401,6 @@ export function CardGenerator() {
       }
     ]);
     setStatus(formatStatus(nextStatus, result.message));
-    saveHistoryItem({
-      card: normalized,
-      prompt,
-      answers,
-      messages,
-      avatarImage,
-      share: null,
-      source
-    });
   }
 
   function selectInterviewAnswer(value: string) {
@@ -769,6 +772,43 @@ export function CardGenerator() {
     setStatus("已清除浏览器缓存里的 API 配置。");
   }
 
+  async function fetchModels() {
+    if (!config.apiKey.trim()) {
+      setError("先填写 API Key 才能获取模型列表。");
+      return;
+    }
+
+    setError("");
+    setModelsLoading(true);
+    setAvailableModels(null);
+    setStatus("正在获取模型列表...");
+
+    try {
+      const response = await fetch("/api/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: config.provider,
+          apiKey: config.apiKey,
+          baseUrl: config.baseUrl
+        })
+      });
+
+      const data = await response.json() as Record<string, unknown>;
+      if (!response.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "获取模型列表失败。");
+      }
+
+      const models = Array.isArray(data.models) ? data.models as string[] : [];
+      setAvailableModels(models);
+      setStatus(`已获取 ${models.length} 个模型，可从下拉列表中选择。`);
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "获取模型列表失败。");
+    } finally {
+      setModelsLoading(false);
+    }
+  }
+
   function saveCurrentToHistory() {
     saveHistoryItem({
       card,
@@ -921,6 +961,42 @@ export function CardGenerator() {
               <span>Model</span>
               <input value={config.model} onChange={(event) => updateConfig({ model: event.target.value })} />
             </label>
+
+            {(config.provider === "openai" || config.provider === "openai-compatible") && (
+              <>
+                <div className="inline-row">
+                  <button
+                    className="button ghost"
+                    type="button"
+                    disabled={modelsLoading}
+                    onClick={() => void fetchModels()}
+                  >
+                    {modelsLoading ? t.fetchingModels : t.fetchModels}
+                  </button>
+                </div>
+
+                {availableModels && availableModels.length > 0 && (
+                  <label className="field">
+                    <span>{t.selectModel}</span>
+                    <select
+                      value={availableModels.includes(config.model) ? config.model : ""}
+                      onChange={(event) => {
+                        if (event.target.value) {
+                          updateConfig({ model: event.target.value });
+                        }
+                      }}
+                    >
+                      <option value="" disabled>{availableModels.length} 个模型可用</option>
+                      {availableModels.map((modelId) => (
+                        <option key={modelId} value={modelId}>
+                          {modelId}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </>
+            )}
 
             <label className="field">
               <span>Base URL</span>
@@ -1132,6 +1208,25 @@ export function CardGenerator() {
               </button>
             </div>
 
+            {!isGenerating && lastCheckpoint && error && (
+              <div className="inline-row">
+                <button
+                  className="button amber"
+                  type="button"
+                  onClick={() => void runGenerator({ messages: lastCheckpoint.messages })}
+                >
+                  {t.retryFromCheckpoint}
+                </button>
+              </div>
+            )}
+
+            {streamedText && (
+              <div className="status-card">
+                <p className="status-line"><strong>{t.streamPreview}</strong></p>
+                <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 320, overflow: "auto", fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>{streamedText}</pre>
+              </div>
+            )}
+
             {thinking && (
               <details className="thinking-panel">
                 <summary>{t.thinkingSummary}</summary>
@@ -1248,6 +1343,28 @@ export function CardGenerator() {
               <span>{t.jsonPreview}</span>
               <textarea className="json-editor" spellCheck={false} value={jsonText} onChange={(event) => handleJsonEdit(event.target.value)} />
             </label>
+
+            <div className="inline-row">
+              <button
+                className="button primary"
+                type="button"
+                onClick={() => {
+                  saveHistoryItem({
+                    card,
+                    prompt,
+                    answers,
+                    messages,
+                    avatarImage,
+                    share: null,
+                    source: hasGenerated ? "llm" : "manual"
+                  });
+                  setStatus("已保存到本地历史。");
+                  nextStep();
+                }}
+              >
+                {t.saveCard}
+              </button>
+            </div>
             </>
           )}
 

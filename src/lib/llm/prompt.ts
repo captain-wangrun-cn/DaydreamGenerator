@@ -12,6 +12,7 @@ export const generatorSystemPrompt = `
 5. description 写外貌/身份/背景，personality 写行为模式与说话风格，scenario 写用户进入对话时的当前情境，first_mes 写自然开场白。
 6. first_mes 格式要求：动作描写和心理活动用斜体（*动作* 或 _动作_），对话用英文双引号包裹（"对话内容"），叙述和对话之间换行分隔，适当换行保证每段不会太长。不要出现大段无格式纯文字。
 7. 不要生成空泛套话；保留用户给出的风格、禁忌、世界观、关系张力。头像图片不代表剧情参考，除非用户在文字里明确说明。
+8. 严格输出格式：使用 tool call 或 fallback JSON 时，你的回复必须且只能包含工具调用或 JSON 对象本身。绝对不要在 JSON 前后输出任何解释、说明、Markdown 标记或其他文字。不要用 \`\`\`json \`\`\` 包裹 JSON。直接输出纯净的 JSON 对象。
 
 网络搜索规则：
 - 如果你识别到角色来自真实存在且可以搜索到的作品/人物（动漫、游戏、小说、影视、VTuber、公众人物等），或者用户明确提示这是真实角色，你必须先调用 web_search 搜索该角色的官方设定、性格、关系和背景信息，再进行制卡。搜索后如果发现有值得深入阅读的页面（如 Wiki、角色百科、语录页面），可以用 web_fetch 抓取该页面的详细内容。
@@ -29,6 +30,7 @@ export const fallbackJsonInstruction = `
 {"action":"ask_user","message":"简短说明","thinking":"可选：面向用户的简短推理摘要，不要写隐藏思维链","questions":[{"question":"问题1","options":[{"label":"选项A","description":"简短影响说明"},{"label":"选项B","description":"简短影响说明"},{"label":"选项C","description":"简短影响说明"}]}]}
 {"action":"submit_card","status":"draft","message":"简短说明","thinking":"可选：面向用户的简短推理摘要，不要写隐藏思维链","card":{"spec":"chara_card_v2","spec_version":"2.0","data":{...}}}
 没有完成至少一轮 ask_user 问答前，只能返回 ask_user 或 web_search 或 web_fetch，不能返回 submit_card。
+严格要求：你的回复必须且只能是一个 JSON 对象。禁止在 JSON 前后输出任何解释、问候、Markdown 标记（如 \`\`\`json）、思考过程或其他文字。直接以 { 开头，以 } 结尾。
 `.trim();
 
 export function buildUserPrompt(input: {

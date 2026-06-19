@@ -179,23 +179,71 @@ function ensureMinimumOptions(options: Array<{ label: string; description?: stri
 
 export function parseLooseJson(text: string): Record<string, unknown> {
   const trimmed = text.trim();
+
+  // Step 1: try direct parse (pure JSON, no surrounding text)
+  const direct = tryParseJson(trimmed);
+  if (direct !== null && isRecord(direct)) {
+    return direct;
+  }
+
+  // Step 2: try extracting from ```json ... ``` fences
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
-  const candidate = fenced ?? trimmed;
-  const first = candidate.indexOf("{");
-  const last = candidate.lastIndexOf("}");
-
-  if (first === -1 || last === -1 || last < first) {
-    throw new Error("No JSON object found in LLM response.");
+  if (fenced) {
+    const parsed = tryParseJson(fenced.trim());
+    if (parsed !== null && isRecord(parsed)) {
+      return parsed;
+    }
   }
 
-  const json = candidate.slice(first, last + 1);
-  const parsed = JSON.parse(json) as unknown;
+  // Step 3: try finding the outermost { ... } pair
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first !== -1 && last !== -1 && last > first) {
+    const candidate = trimmed.slice(first, last + 1);
+    const parsed = tryParseJson(candidate);
+    if (parsed !== null && isRecord(parsed)) {
+      return parsed;
+    }
 
-  if (!isRecord(parsed)) {
-    throw new Error("LLM JSON response must be an object.");
+    // Step 4: attempt common LLM JSON mistakes repair
+    const repaired = repairJsonString(candidate);
+    const parsedRepaired = tryParseJson(repaired);
+    if (parsedRepaired !== null && isRecord(parsedRepaired)) {
+      return parsedRepaired;
+    }
   }
 
-  return parsed;
+  throw new Error("No JSON object found in LLM response.");
+}
+
+function tryParseJson(text: string): unknown | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function repairJsonString(text: string): string {
+  let repaired = text;
+
+  // Strip trailing commas before } or ]
+  repaired = repaired.replace(/,\s*([}\]])/g, "$1");
+
+  // Escape unescaped newlines inside string values:
+  // replace literal newlines that appear between quotes with \n
+  repaired = repaired.replace(
+    /("(?:[^"\\]|\\.)*")/g,
+    (match) => match.replace(/\n/g, "\\n").replace(/\r/g, "")
+  );
+
+  // Replace single quotes used as string delimiters with double quotes
+  // (conservative: only if the string looks like it uses single quotes)
+  if (!repaired.includes('"') && repaired.includes("'")) {
+    repaired = repaired.replace(/'/g, '"');
+  }
+
+  return repaired;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
