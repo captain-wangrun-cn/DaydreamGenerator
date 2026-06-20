@@ -351,7 +351,7 @@ function buildOpenAiPayload(request: LlmTurnRequest, defaultBaseUrl?: string): P
     messages: [
       {
         role: "system",
-        content: `${generatorSystemPrompt}\n\n${fallbackJsonInstruction}`
+        content: `${generatorSystemPrompt(request.mode)}\n\n${fallbackJsonInstruction}`
       },
       {
         role: "user",
@@ -362,7 +362,7 @@ function buildOpenAiPayload(request: LlmTurnRequest, defaultBaseUrl?: string): P
   };
 
   if (request.config.useTools !== false) {
-    body.tools = openAiTools();
+    body.tools = openAiTools(request.mode);
     body.tool_choice = "auto";
   } else {
     body.response_format = { type: "json_object" };
@@ -405,7 +405,7 @@ function buildAnthropicPayload(request: LlmTurnRequest): ProviderPayload {
   const body: Record<string, unknown> = {
     model: request.config.model,
     max_tokens: 4096,
-    system: generatorSystemPrompt,
+    system: generatorSystemPrompt(request.mode),
     messages: [
       {
         role: "user",
@@ -415,7 +415,7 @@ function buildAnthropicPayload(request: LlmTurnRequest): ProviderPayload {
   };
 
   if (request.config.useTools !== false) {
-    body.tools = anthropicTools();
+    body.tools = anthropicTools(request.mode);
   }
 
   return {
@@ -435,7 +435,7 @@ function buildAnthropicPayload(request: LlmTurnRequest): ProviderPayload {
 
 function buildGeminiPayload(request: LlmTurnRequest): ProviderPayload {
   const baseUrl = normalizeBaseUrl(request.config.baseUrl || "https://generativelanguage.googleapis.com/v1beta");
-  const prompt = `${generatorSystemPrompt}\n\n${fallbackJsonInstruction}\n\n${buildUserPrompt(request)}`;
+  const prompt = `${generatorSystemPrompt(request.mode)}\n\n${fallbackJsonInstruction}\n\n${buildUserPrompt(request)}`;
   const parts: unknown[] = [
     {
       text: prompt
@@ -461,7 +461,7 @@ function buildGeminiPayload(request: LlmTurnRequest): ProviderPayload {
   };
 
   if (request.config.useTools !== false) {
-    body.tools = geminiTools();
+    body.tools = geminiTools(request.mode);
   } else {
     body.generationConfig = {
       temperature: 0.8,
@@ -734,7 +734,7 @@ function normalizeReasoningText(value: unknown): string | undefined {
   return undefined;
 }
 
-export function makeLocalDraft(request: Pick<LlmTurnRequest, "kind" | "prompt" | "answers" | "language">): LlmTurnResult {
+export function makeLocalDraft(request: Pick<LlmTurnRequest, "kind" | "mode" | "prompt" | "answers" | "language">): LlmTurnResult {
   const title = request.prompt.split(/[\n，。,.]/).map((part) => part.trim()).find(Boolean);
   const card = normalizeCard({
     name: title ? title.slice(0, 24) : "未命名角色",

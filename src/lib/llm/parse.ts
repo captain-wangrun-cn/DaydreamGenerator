@@ -122,7 +122,7 @@ export function normalizeQuestions(value: unknown): AskQuestion[] {
       };
     })
     .filter((item): item is AskQuestion => Boolean(item))
-    .slice(0, 3);
+    .slice(0, 5);
 
   return normalized.length > 0 ? normalized : fallback;
 }
@@ -154,7 +154,7 @@ function normalizeOptions(value: unknown) {
       };
     })
     .filter((item): item is { label: string; description?: string } => Boolean(item))
-    .slice(0, 4);
+    .slice(0, 5);
 }
 
 function ensureMinimumOptions(options: Array<{ label: string; description?: string }>) {
@@ -174,7 +174,7 @@ function ensureMinimumOptions(options: Array<{ label: string; description?: stri
     }
   }
 
-  return merged.slice(0, 4);
+  return merged.slice(0, 5);
 }
 
 export function parseLooseJson(text: string): Record<string, unknown> {

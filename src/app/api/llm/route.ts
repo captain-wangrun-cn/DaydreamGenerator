@@ -18,6 +18,7 @@ const requestSchema = z.object({
     tavilyKey: z.string().optional()
   }),
   kind: cardKindSchema,
+  mode: z.enum(["normal", "story"]).default("normal"),
   prompt: z.string().default(""),
   language: z.enum(["zh-CN", "en-US", "ja-JP"]).default("zh-CN"),
   answers: z.string().default(""),

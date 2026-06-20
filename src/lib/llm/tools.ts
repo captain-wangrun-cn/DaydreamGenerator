@@ -1,6 +1,7 @@
 import { cardJsonSchemaDescription } from "@/lib/llm/prompt";
+import type { CardMode } from "@/lib/llm/types";
 
-export function openAiTools() {
+export function openAiTools(mode?: CardMode) {
   return [
     {
       type: "function",
@@ -22,7 +23,7 @@ export function openAiTools() {
       type: "function",
       function: {
         name: "ask_user",
-        description: "Ask the user 1 to 3 concrete follow-up questions with at least 3 selectable options before making the card.",
+        description: "Ask the user 1 to 5 concrete follow-up questions with at least 3 selectable options before making the card.",
         parameters: askUserParameters()
       }
     },
@@ -31,13 +32,13 @@ export function openAiTools() {
       function: {
         name: "submit_card",
         description: "Submit a draft or final SillyTavern Character Card V2.",
-        parameters: submitCardParameters()
+        parameters: submitCardParameters(mode)
       }
     }
   ];
 }
 
-export function anthropicTools() {
+export function anthropicTools(mode?: CardMode) {
   return [
     {
       name: "web_search",
@@ -51,18 +52,18 @@ export function anthropicTools() {
     },
     {
       name: "ask_user",
-      description: "Ask the user 1 to 3 concrete follow-up questions with at least 3 selectable options before making the card.",
+      description: "Ask the user 1 to 5 concrete follow-up questions with at least 3 selectable options before making the card.",
       input_schema: askUserParameters()
     },
     {
       name: "submit_card",
       description: "Submit a draft or final SillyTavern Character Card V2.",
-      input_schema: submitCardParameters()
+      input_schema: submitCardParameters(mode)
     }
   ];
 }
 
-export function geminiTools() {
+export function geminiTools(mode?: CardMode) {
   return [
     {
       functionDeclarations: [
@@ -78,13 +79,13 @@ export function geminiTools() {
         },
         {
           name: "ask_user",
-          description: "Ask the user 1 to 3 concrete follow-up questions with at least 3 selectable options before making the card.",
+          description: "Ask the user 1 to 5 concrete follow-up questions with at least 3 selectable options before making the card.",
           parameters: askUserParameters()
         },
         {
           name: "submit_card",
           description: "Submit a draft or final SillyTavern Character Card V2.",
-          parameters: submitCardParameters()
+          parameters: submitCardParameters(mode)
         }
       ]
     }
@@ -142,7 +143,7 @@ function questionArrayParameters() {
   return {
     type: "array",
     minItems: 1,
-    maxItems: 3,
+    maxItems: 5,
     items: {
       type: "object",
       additionalProperties: false,
@@ -158,7 +159,7 @@ function questionArrayParameters() {
         options: {
           type: "array",
           minItems: 3,
-          maxItems: 4,
+          maxItems: 5,
           items: {
             type: "object",
             additionalProperties: false,
@@ -181,7 +182,7 @@ function questionArrayParameters() {
   };
 }
 
-function submitCardParameters() {
+function submitCardParameters(mode?: CardMode) {
   return {
     type: "object",
     additionalProperties: false,
@@ -197,7 +198,7 @@ function submitCardParameters() {
         type: "string",
         description: "A concise, user-safe summary of what you inferred and why this card shape fits. Do not include hidden chain-of-thought."
       },
-      card: cardJsonSchemaDescription()
+      card: cardJsonSchemaDescription(mode)
     },
     required: ["status", "card"]
   };

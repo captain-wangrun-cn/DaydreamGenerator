@@ -90,6 +90,11 @@ export type AppStrings = {
   fetchModels: string;
   fetchingModels: string;
   selectModel: string;
+  modeNormal: string;
+  modeNormalHint: string;
+  modeStory: string;
+  modeStoryHint: string;
+  modeLabel: string;
 };
 
 export const languageOptions: LanguageOption[] = [
@@ -188,7 +193,12 @@ export const copy: Record<UiLanguage, AppStrings> = {
     retryFromCheckpoint: "从搜索进度重试",
     fetchModels: "获取模型列表",
     fetchingModels: "正在获取模型...",
-    selectModel: "选择模型"
+    selectModel: "选择模型",
+    modeNormal: "普通角色卡片",
+    modeNormalHint: "生成一个对话角色卡，适合日常聊天、角色扮演。",
+    modeStory: "剧情角色卡片",
+    modeStoryHint: "生成带完整剧情结构的角色卡，含多幕章节、分支走向和剧情推进指令。",
+    modeLabel: "卡片类型"
   },
   "en-US": {
     steps: [
@@ -279,7 +289,12 @@ export const copy: Record<UiLanguage, AppStrings> = {
     retryFromCheckpoint: "Retry from checkpoint",
     fetchModels: "Fetch models",
     fetchingModels: "Fetching models...",
-    selectModel: "Select model"
+    selectModel: "Select model",
+    modeNormal: "Standard Card",
+    modeNormalHint: "Generate a conversational character card for everyday chat and roleplay.",
+    modeStory: "Story Card",
+    modeStoryHint: "Generate a character card with full plot structure, multi-act chapters, branching points, and story progression instructions.",
+    modeLabel: "Card Type"
   },
   "ja-JP": {
     steps: [
@@ -370,7 +385,12 @@ export const copy: Record<UiLanguage, AppStrings> = {
     retryFromCheckpoint: "チェックポイントから再試行",
     fetchModels: "モデル一覧を取得",
     fetchingModels: "モデル取得中...",
-    selectModel: "モデルを選択"
+    selectModel: "モデルを選択",
+    modeNormal: "通常キャラクターカード",
+    modeNormalHint: "日常チャットやロールプレイ向けの会話キャラクターカードを生成。",
+    modeStory: "ストリーカード",
+    modeStoryHint: "マルチアクトの章構成、分岐ポイント、ストリー進行指示を含む完全なプロット構造のカードを生成。",
+    modeLabel: "カードタイプ"
   }
 };
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createEmptyCard, isShareableCard, normalizeCard, type CharacterCardV2 } from "@/lib/card-schema";
 import { copy, isUiLanguage, languageOptions, uiLocale } from "@/lib/i18n";
 import { LlmRequestError, sendLlmTurn, makeLocalDraft, unsupportedMediaWarning } from "@/lib/llm/providers";
-import type { AskQuestion, ChatMessage, LlmConfig, LlmProgressEvent, LlmTurnResult, MediaAttachment, ProviderId, UiLanguage } from "@/lib/llm/types";
+import type { AskQuestion, CardMode, ChatMessage, LlmConfig, LlmProgressEvent, LlmTurnResult, MediaAttachment, ProviderId, UiLanguage } from "@/lib/llm/types";
 import { filesToAttachments } from "@/lib/media";
 import { embedCardInPngDataUrl } from "@/lib/png-card";
 
@@ -105,6 +105,7 @@ export function CardGenerator() {
   const t = copy[language];
   const [config, setConfig] = useState<LlmConfig>(initialConfig);
   const [prompt, setPrompt] = useState("");
+  const [mode, setMode] = useState<CardMode>("normal");
   const [answers, setAnswers] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [referenceMedia, setReferenceMedia] = useState<MediaAttachment[]>([]);
@@ -273,7 +274,7 @@ export function CardGenerator() {
     const effectiveMessages = overrides?.messages ?? messages;
 
     if (!config.apiKey.trim()) {
-      const draft = makeLocalDraft({ kind: "character", prompt, language, answers: effectiveAnswers });
+      const draft = makeLocalDraft({ kind: "character", mode, prompt, language, answers: effectiveAnswers });
       applyLlmResult(draft, "没有填写 API key，已先生成本地草稿。", "draft");
       return;
     }
@@ -288,6 +289,7 @@ export function CardGenerator() {
     const request = {
       config,
       kind: "character" as const,
+      mode,
       prompt,
       language,
       answers: effectiveAnswers,
@@ -1073,6 +1075,28 @@ export function CardGenerator() {
 
           {step === 1 && (
             <>
+            <div className="field">
+              <span>{t.modeLabel}</span>
+              <div className="choice-list" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                <button
+                  className={`choice-button ${mode === "normal" ? "selected" : ""}`}
+                  type="button"
+                  onClick={() => setMode("normal")}
+                >
+                  <strong>{t.modeNormal}</strong>
+                  <span>{t.modeNormalHint}</span>
+                </button>
+                <button
+                  className={`choice-button ${mode === "story" ? "selected" : ""}`}
+                  type="button"
+                  onClick={() => setMode("story")}
+                >
+                  <strong>{t.modeStory}</strong>
+                  <span>{t.modeStoryHint}</span>
+                </button>
+              </div>
+            </div>
+
             <label className="field">
               <span>{t.promptLabel}</span>
               <textarea
@@ -1203,7 +1227,7 @@ export function CardGenerator() {
               <button className="button primary" type="button" disabled={isGenerating || isPending} onClick={() => void runGenerator()}>
                 {isGenerating || isPending ? t.generating : hasGenerated ? t.regenerate : t.startGenerate}
               </button>
-              <button className="button ghost" type="button" onClick={() => applyLlmResult(makeLocalDraft({ kind: "character", prompt, language, answers }), t.localDraft, "draft")}>
+              <button className="button ghost" type="button" onClick={() => applyLlmResult(makeLocalDraft({ kind: "character", mode, prompt, language, answers }), t.localDraft, "draft")}>
                 {t.localDraft}
               </button>
             </div>
@@ -1785,6 +1809,7 @@ function safeStringify(value: unknown): string {
 async function sendProxiedLlmTurn(request: {
   config: LlmConfig;
   kind: "character";
+  mode?: CardMode;
   prompt: string;
   language: UiLanguage;
   answers: string;
