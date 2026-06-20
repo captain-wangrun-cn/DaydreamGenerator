@@ -5,12 +5,14 @@ import { createEmptyCard, isShareableCard, normalizeCard, type CharacterCardV2 }
 import { copy, isUiLanguage, languageOptions, uiLocale } from "@/lib/i18n";
 import { LlmRequestError, sendLlmTurn, makeLocalDraft, unsupportedMediaWarning } from "@/lib/llm/providers";
 import type { AskQuestion, CardMode, ChatMessage, LlmConfig, LlmProgressEvent, LlmTurnResult, MediaAttachment, ProviderId, UiLanguage } from "@/lib/llm/types";
-import { filesToAttachments } from "@/lib/media";
+import { filesToAttachments, clearMediaStore, loadMediaFromStore, saveMediaToStore } from "@/lib/media";
 import { embedCardInPngDataUrl } from "@/lib/png-card";
 
 const CONFIG_STORAGE_KEY = "daydream-generator.llm-config.v1";
 const HISTORY_STORAGE_KEY = "daydream-generator.history.v1";
 const LANGUAGE_STORAGE_KEY = "daydream-generator.language.v1";
+const WORKFLOW_STORAGE_KEY = "daydream-generator.workflow.v1";
+const MEDIA_STORE_KEY = "daydream-generator.media.v1";
 const MAX_HISTORY_ITEMS = 30;
 
 const providerDefaults: Record<ProviderId, { model: string; baseUrl: string; label: string }> = {
@@ -90,6 +92,25 @@ type LlmErrorInfo = {
   detail: string;
 };
 
+type WorkflowSnapshot = {
+  version: 1;
+  savedAt: number;
+  step: number;
+  prompt: string;
+  mode: CardMode;
+  answers: string;
+  messages: ChatMessage[];
+  card: CharacterCardV2;
+  jsonText: string;
+  interview: InterviewState | null;
+  lastCheckpoint: { searches: string[]; messages: ChatMessage[] } | null;
+  hasGenerated: boolean;
+  hasGeneratedCard: boolean;
+  searchLogs: string[];
+  thinking: string;
+  referenceMediaCount: number;
+};
+
 class LlmClientError extends Error {
   readonly detail: string;
 
@@ -156,21 +177,48 @@ export function CardGenerator() {
 
   useEffect(() => {
     const saved = localStorage.getItem(CONFIG_STORAGE_KEY);
-    if (!saved) {
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(saved) as LlmConfig;
-      setConfig({
-        ...initialConfig,
-        ...parsed
-      });
-    } catch {
-      localStorage.removeItem(CONFIG_STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as LlmConfig;
+        setConfig({
+          ...initialConfig,
+          ...parsed
+        });
+      } catch {
+        localStorage.removeItem(CONFIG_STORAGE_KEY);
+      }
     }
 
     setHistory(loadHistory());
+
+    // Restore workflow snapshot if present
+    const snap = loadWorkflowSnapshot();
+    if (snap) {
+      setStep(snap.step);
+      setPrompt(snap.prompt);
+      setMode(snap.mode);
+      setAnswers(snap.answers);
+      setMessages(snap.messages);
+      setCard(snap.card);
+      setJsonText(snap.jsonText);
+      setInterview(snap.interview);
+      setLastCheckpoint(snap.lastCheckpoint);
+      setHasGenerated(snap.hasGenerated);
+      setHasGeneratedCard(snap.hasGeneratedCard);
+      setSearchLogs(snap.searchLogs);
+      setThinking(snap.thinking);
+      const hint = snap.referenceMediaCount > 0
+        ? `（上次附带了 ${snap.referenceMediaCount} 个参考素材，正在恢复...）`
+        : "";
+      setStatus(`已从自动保存恢复到步骤 ${snap.step + 1}。${hint}`);
+    }
+
+    // Restore reference media from IndexedDB
+    loadMediaFromStore(MEDIA_STORE_KEY).then((media) => {
+      if (media.length > 0) {
+        setReferenceMedia(media);
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -185,6 +233,46 @@ export function CardGenerator() {
     document.documentElement.lang = language;
     localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   }, [language]);
+
+  // Auto-save workflow snapshot (debounced)
+  useEffect(() => {
+    if (isGenerating) return;
+    if (step === 0 && !prompt && messages.length === 0 && !hasGenerated) return;
+
+    const handle = setTimeout(() => {
+      const snapshot: WorkflowSnapshot = {
+        version: 1,
+        savedAt: Date.now(),
+        step,
+        prompt,
+        mode,
+        answers,
+        messages,
+        card,
+        jsonText,
+        interview,
+        lastCheckpoint,
+        hasGenerated,
+        hasGeneratedCard,
+        searchLogs,
+        thinking,
+        referenceMediaCount: referenceMedia.length,
+      };
+
+      try {
+        localStorage.setItem(WORKFLOW_STORAGE_KEY, JSON.stringify(snapshot));
+      } catch {
+        // QuotaExceededError: silently fail
+      }
+    }, 500);
+
+    return () => clearTimeout(handle);
+  }, [step, prompt, mode, answers, messages, card, jsonText, interview, lastCheckpoint, hasGenerated, hasGeneratedCard, searchLogs, thinking, referenceMedia.length, isGenerating]);
+
+  // Auto-save reference media to IndexedDB
+  useEffect(() => {
+    void saveMediaToStore(MEDIA_STORE_KEY, referenceMedia);
+  }, [referenceMedia]);
 
   function updateConfig(patch: Partial<LlmConfig>) {
     setConfig((current) => {
@@ -637,6 +725,8 @@ export function CardGenerator() {
         share: json as ShareResponse,
         source: "manual"
       });
+      localStorage.removeItem(WORKFLOW_STORAGE_KEY);
+      void clearMediaStore(MEDIA_STORE_KEY);
       setStatus("直链已生成，可以复制导入。");
     } catch (shareError) {
       setError(shareError instanceof Error ? shareError.message : "直链生成失败。");
@@ -866,6 +956,8 @@ export function CardGenerator() {
 
   function clearHistory() {
     localStorage.removeItem(HISTORY_STORAGE_KEY);
+    localStorage.removeItem(WORKFLOW_STORAGE_KEY);
+    void clearMediaStore(MEDIA_STORE_KEY);
     setHistory([]);
     setStatus("本地生成历史已清空。");
   }
@@ -1382,6 +1474,8 @@ export function CardGenerator() {
                     share: null,
                     source: hasGenerated ? "llm" : "manual"
                   });
+                  localStorage.removeItem(WORKFLOW_STORAGE_KEY);
+                  void clearMediaStore(MEDIA_STORE_KEY);
                   setStatus("已保存到本地历史。");
                   nextStep();
                 }}
@@ -1718,6 +1812,47 @@ function isMediaAttachment(value: unknown): value is MediaAttachment {
     && media.kind === "image"
     && typeof media.dataUrl === "string"
     && typeof media.size === "number";
+}
+
+function loadWorkflowSnapshot(): WorkflowSnapshot | null {
+  try {
+    const raw = localStorage.getItem(WORKFLOW_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isWorkflowSnapshot(parsed)) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    localStorage.removeItem(WORKFLOW_STORAGE_KEY);
+    return null;
+  }
+}
+
+function isWorkflowSnapshot(value: unknown): value is WorkflowSnapshot {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const snap = value as Partial<WorkflowSnapshot>;
+  if (snap.version !== 1) return false;
+  if (typeof snap.step !== "number" || snap.step < 0 || snap.step >= TOTAL_STEPS) return false;
+  if (typeof snap.prompt !== "string") return false;
+  if (snap.mode !== "normal" && snap.mode !== "story") return false;
+  if (typeof snap.answers !== "string") return false;
+  if (!Array.isArray(snap.messages) || !snap.messages.every(isChatMessage)) return false;
+  if (!snap.card || typeof snap.card !== "object") return false;
+  if (typeof snap.jsonText !== "string") return false;
+  if (typeof snap.hasGenerated !== "boolean") return false;
+  if (typeof snap.hasGeneratedCard !== "boolean") return false;
+  if (!Array.isArray(snap.searchLogs)) return false;
+  if (typeof snap.thinking !== "string") return false;
+  if (typeof snap.referenceMediaCount !== "number") return false;
+  return true;
 }
 
 function historyKey(item: HistoryItem): string {

@@ -54,6 +54,79 @@ export async function filesToAttachments(files: FileList | File[]): Promise<Medi
   return attachments;
 }
 
+const MEDIA_DB_NAME = "daydream-generator-media";
+const MEDIA_DB_VERSION = 1;
+const MEDIA_STORE_NAME = "media";
+
+function openMediaDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(MEDIA_DB_NAME, MEDIA_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
+        db.createObjectStore(MEDIA_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function saveMediaToStore(key: string, media: MediaAttachment[]): Promise<void> {
+  try {
+    const db = await openMediaDb();
+    const tx = db.transaction(MEDIA_STORE_NAME, "readwrite");
+    tx.objectStore(MEDIA_STORE_NAME).put(media, key);
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch {
+    // Best-effort: don't crash the app if IndexedDB is unavailable
+  }
+}
+
+export async function loadMediaFromStore(key: string): Promise<MediaAttachment[]> {
+  try {
+    const db = await openMediaDb();
+    const tx = db.transaction(MEDIA_STORE_NAME, "readonly");
+    const request = tx.objectStore(MEDIA_STORE_NAME).get(key);
+    const result = await new Promise<unknown>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    if (!Array.isArray(result)) return [];
+    return result.filter((item): item is MediaAttachment =>
+      typeof item === "object" && item !== null
+      && typeof (item as MediaAttachment).id === "string"
+      && typeof (item as MediaAttachment).name === "string"
+      && typeof (item as MediaAttachment).mimeType === "string"
+      && ((item as MediaAttachment).kind === "image" || (item as MediaAttachment).kind === "video")
+      && typeof (item as MediaAttachment).dataUrl === "string"
+      && typeof (item as MediaAttachment).size === "number"
+    );
+  } catch {
+    return [];
+  }
+}
+
+export async function clearMediaStore(key: string): Promise<void> {
+  try {
+    const db = await openMediaDb();
+    const tx = db.transaction(MEDIA_STORE_NAME, "readwrite");
+    tx.objectStore(MEDIA_STORE_NAME).delete(key);
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch {
+    // Best-effort
+  }
+}
+
 export function base64ToUint8Array(base64: string): Uint8Array {
   if (typeof atob === "function") {
     const binary = atob(base64);
