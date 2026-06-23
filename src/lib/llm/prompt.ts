@@ -28,32 +28,9 @@ const storyModePrompt = `
 4. 提交卡片时，你必须按以下规则填充各字段：
    - scenario = 世界观概述 + 故事大纲摘要
    - alternate_greetings = 每个 greeting 对应一幕/一章的开场白，用于 SillyTavern 的 alternate greetings 切换章节
-   - system_prompt = 剧情推进指令，告诉后续 LLM 如何在对话中推动剧情发展、维持节奏和张力
+   - system_prompt = 完整的剧情推进指令，必须包含以下内容：故事主题与基调、结构类型（如三幕式、五幕式、线性章节）、每幕的标题/摘要/关键事件及对应 alternate_greetings 索引。下游 LLM 将直接依据 system_prompt 在对话中推动剧情发展、维持节奏和张力
    - post_history_instructions = 动态剧情引导，根据当前进展提示 LLM 如何调整对话方向
    - creator_notes = 完整故事梗概，供用户参考
-   - extensions.daydreamgenerator.story = 结构化剧情元数据（见下方 schema）
-5. extensions.daydreamgenerator.story 的 JSON 结构：
-{
-  "mode": "story",
-  "theme": "故事主题，如：复仇与救赎",
-  "structure": "结构类型，如：三幕式、五幕式、线性章节",
-  "acts": [
-    {
-      "title": "第一幕：标题",
-      "summary": "本幕摘要",
-      "key_events": ["事件1", "事件2"],
-      "greeting_index": 0
-    }
-  ],
-  "branching_points": [
-    {
-      "description": "分支描述",
-      "options": ["选项A方向", "选项B方向"]
-    }
-  ]
-}
-greeting_index 指向 alternate_greetings 数组中对应幕的索引。
-branching_points 列出故事中用户可能影响走向的关键决策点。
 `.trim();
 
 const webSearchRules = `
@@ -140,53 +117,7 @@ function languageName(language: UiLanguage): string {
 }
 
 export function cardJsonSchemaDescription(mode?: CardMode) {
-  const extensionSchema = mode === "story"
-    ? {
-        type: "object" as const,
-        properties: {
-          daydreamgenerator: {
-            type: "object" as const,
-            properties: {
-              source: { type: "string" as const },
-              format: { type: "string" as const },
-              story: {
-                type: "object" as const,
-                properties: {
-                  mode: { type: "string" as const, const: "story" },
-                  theme: { type: "string" as const },
-                  structure: { type: "string" as const },
-                  acts: {
-                    type: "array" as const,
-                    items: {
-                      type: "object" as const,
-                      properties: {
-                        title: { type: "string" as const },
-                        summary: { type: "string" as const },
-                        key_events: { type: "array" as const, items: { type: "string" as const } },
-                        greeting_index: { type: "integer" as const }
-                      },
-                      required: ["title", "summary", "key_events", "greeting_index"]
-                    }
-                  },
-                  branching_points: {
-                    type: "array" as const,
-                    items: {
-                      type: "object" as const,
-                      properties: {
-                        description: { type: "string" as const },
-                        options: { type: "array" as const, items: { type: "string" as const } }
-                      },
-                      required: ["description", "options"]
-                    }
-                  }
-                },
-                required: ["mode", "theme", "structure", "acts"]
-              }
-            }
-          }
-        }
-      }
-    : { type: "object" as const };
+  void mode; // mode no longer affects extension schema
 
   return {
     type: "object",
@@ -211,7 +142,7 @@ export function cardJsonSchemaDescription(mode?: CardMode) {
           tags: { type: "array", items: { type: "string" } },
           creator: { type: "string" },
           character_version: { type: "string" },
-          extensions: extensionSchema
+          extensions: { type: "object" as const }
         },
         required: ["name"]
       }
