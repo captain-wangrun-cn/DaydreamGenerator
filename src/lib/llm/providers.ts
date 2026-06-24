@@ -1,7 +1,7 @@
 import { normalizeCard, type CardKind } from "@/lib/card-schema";
 import { dataUrlToBase64 } from "@/lib/media";
-import { buildUserPrompt, fallbackJsonInstruction, generatorSystemPrompt } from "@/lib/llm/prompt";
-import { anthropicTools, geminiTools, openAiTools } from "@/lib/llm/tools";
+import { buildUserPrompt, buildEditUserPrompt, editorFallbackJsonInstruction, editorSystemPrompt, fallbackJsonInstruction, generatorSystemPrompt } from "@/lib/llm/prompt";
+import { anthropicTools, anthropicEditorTools, geminiTools, geminiEditorTools, openAiTools, openAiEditorTools } from "@/lib/llm/tools";
 import { parseFallbackJson, parseLooseJson, parseToolResult } from "@/lib/llm/parse";
 import type { LlmProgressListener, LlmTurnOrSearchResult, LlmTurnRequest, LlmTurnResult, MediaAttachment, ProviderPayload, WebSearchResultItem } from "@/lib/llm/types";
 
@@ -21,6 +21,9 @@ export class LlmRequestError extends Error {
 }
 
 export function buildProviderPayload(request: LlmTurnRequest): ProviderPayload {
+  if (request.skipInterview) {
+    return buildEditProviderPayload(request);
+  }
   switch (request.config.provider) {
     case "openai":
       return buildOpenAiPayload(request, "https://api.openai.com/v1");
@@ -292,6 +295,9 @@ export function formatSearchResults(results: WebSearchResultItem[]): string {
 }
 
 export function enforceInterviewBeforeSubmit(result: LlmTurnOrSearchResult, request: LlmTurnRequest): LlmTurnOrSearchResult {
+  if (request.skipInterview) {
+    return result;
+  }
   if (result.action !== "submit_card" || hasCompletedInterview(request)) {
     return result;
   }
@@ -322,6 +328,158 @@ function hasCompletedInterview(request: LlmTurnRequest): boolean {
   return request.messages.some((message) => (
     message.role === "user" && /回答[:：]/.test(message.content)
   ));
+}
+
+function buildEditProviderPayload(request: LlmTurnRequest): ProviderPayload {
+  switch (request.config.provider) {
+    case "openai":
+      return buildEditOpenAiPayload(request, "https://api.openai.com/v1");
+    case "openai-compatible":
+      return buildEditOpenAiPayload(request, request.config.baseUrl);
+    case "anthropic":
+      return buildEditAnthropicPayload(request);
+    case "gemini":
+      return buildEditGeminiPayload(request);
+    default:
+      throw new Error("Unsupported provider.");
+  }
+}
+
+function buildEditOpenAiPayload(request: LlmTurnRequest, defaultBaseUrl?: string): ProviderPayload {
+  const baseUrl = normalizeBaseUrl(request.config.baseUrl || defaultBaseUrl);
+  if (!baseUrl) {
+    throw new Error("OpenAI-compatible providers need a base URL.");
+  }
+
+  const prompt = buildEditUserPrompt(request);
+  const content: unknown[] = [
+    {
+      type: "text",
+      text: prompt
+    }
+  ];
+
+  const body: Record<string, unknown> = {
+    model: request.config.model,
+    messages: [
+      {
+        role: "system",
+        content: `${editorSystemPrompt()}\n\n${editorFallbackJsonInstruction}`
+      },
+      {
+        role: "user",
+        content
+      }
+    ],
+    temperature: 0.8
+  };
+
+  if (request.config.useTools !== false) {
+    body.tools = openAiEditorTools();
+    body.tool_choice = "auto";
+  } else {
+    body.response_format = { type: "json_object" };
+  }
+
+  return {
+    url: `${baseUrl}/chat/completions`,
+    init: {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${request.config.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    },
+    parser: parseOpenAiResponse
+  };
+}
+
+function buildEditAnthropicPayload(request: LlmTurnRequest): ProviderPayload {
+  const baseUrl = normalizeBaseUrl(request.config.baseUrl || "https://api.anthropic.com/v1");
+  const prompt = buildEditUserPrompt(request);
+  const content: unknown[] = [
+    {
+      type: "text",
+      text: `${prompt}\n\n${editorFallbackJsonInstruction}`
+    }
+  ];
+
+  const body: Record<string, unknown> = {
+    model: request.config.model,
+    max_tokens: 4096,
+    system: editorSystemPrompt(),
+    messages: [
+      {
+        role: "user",
+        content
+      }
+    ]
+  };
+
+  if (request.config.useTools !== false) {
+    body.tools = anthropicEditorTools();
+  }
+
+  return {
+    url: `${baseUrl}/messages`,
+    init: {
+      method: "POST",
+      headers: {
+        "x-api-key": request.config.apiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    },
+    parser: parseAnthropicResponse
+  };
+}
+
+function buildEditGeminiPayload(request: LlmTurnRequest): ProviderPayload {
+  const baseUrl = normalizeBaseUrl(request.config.baseUrl || "https://generativelanguage.googleapis.com/v1beta");
+  const prompt = `${editorSystemPrompt()}\n\n${editorFallbackJsonInstruction}\n\n${buildEditUserPrompt(request)}`;
+  const parts: unknown[] = [
+    {
+      text: prompt
+    }
+  ];
+
+  const body: Record<string, unknown> = {
+    contents: [
+      {
+        role: "user",
+        parts
+      }
+    ],
+    generationConfig: {
+      temperature: 0.8
+    }
+  };
+
+  if (request.config.useTools !== false) {
+    body.tools = geminiEditorTools();
+  } else {
+    body.generationConfig = {
+      temperature: 0.8,
+      responseMimeType: "application/json"
+    };
+  }
+
+  const model = encodeURIComponent(request.config.model);
+  const separator = baseUrl.includes("?") ? "&" : "?";
+
+  return {
+    url: `${baseUrl}/models/${model}:generateContent${separator}key=${encodeURIComponent(request.config.apiKey)}`,
+    init: {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    },
+    parser: parseGeminiResponse
+  };
 }
 
 function buildOpenAiPayload(request: LlmTurnRequest, defaultBaseUrl?: string): ProviderPayload {

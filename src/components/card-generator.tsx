@@ -164,6 +164,18 @@ export function CardGenerator() {
   });
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
+  // AI Edit modal state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editInstruction, setEditInstruction] = useState("");
+  const [editMessages, setEditMessages] = useState<ChatMessage[]>([]);
+  const [editStreamedText, setEditStreamedText] = useState("");
+  const [editThinking, setEditThinking] = useState("");
+  const [editSearchLogs, setEditSearchLogs] = useState<string[]>([]);
+  const [editStatus, setEditStatus] = useState("");
+  const [editError, setEditError] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const [editPendingCard, setEditPendingCard] = useState<CharacterCardV2 | null>(null);
+
   const providerWarning = unsupportedMediaWarning(config.provider, referenceMedia);
   const firstReferenceVideo = useMemo(() => referenceMedia.find((item) => item.kind === "video"), [referenceMedia]);
   const activeQuestion = interview?.questions[interview.currentIndex];
@@ -643,6 +655,129 @@ export function CardGenerator() {
       setIsCurrentCardShareable(false);
       setError(jsonError instanceof Error ? jsonError.message : "JSON 校验失败。");
     }
+  }
+
+  function openEditModal() {
+    setEditModalOpen(true);
+    setEditInstruction("");
+    setEditMessages([]);
+    setEditStreamedText("");
+    setEditThinking("");
+    setEditSearchLogs([]);
+    setEditStatus("");
+    setEditError("");
+    setIsEditing(false);
+    setEditPendingCard(null);
+  }
+
+  function handleEditProgress(event: LlmProgressEvent) {
+    switch (event.type) {
+      case "provider_connecting":
+        setEditStatus(t.editing);
+        break;
+      case "provider_connected":
+        setEditStatus(t.editing);
+        break;
+      case "provider_first_byte":
+        setEditStatus(t.editing);
+        break;
+      case "web_search":
+        setEditSearchLogs((current) => [...current, event.query]);
+        setEditStatus(`搜索中：${event.query}`);
+        break;
+      case "web_fetch":
+        setEditSearchLogs((current) => [...current, `[fetch] ${event.url}`]);
+        break;
+      case "token":
+        setEditStreamedText((current) => current + event.text);
+        break;
+    }
+  }
+
+  async function runEditLlmTurn() {
+    if (!editInstruction.trim() || !config.apiKey.trim()) {
+      return;
+    }
+
+    setEditError("");
+    setEditStreamedText("");
+    setEditThinking("");
+    setEditSearchLogs([]);
+    setIsEditing(true);
+    setEditStatus(t.editing);
+    setEditPendingCard(null);
+
+    const currentEditCard = editPendingCard || card;
+    const editMessagesWithInstruction: ChatMessage[] = [
+      ...editMessages,
+      { role: "user", content: editInstruction }
+    ];
+
+    const request = {
+      config,
+      kind: "character" as const,
+      prompt: editInstruction,
+      language,
+      answers: "",
+      messages: editMessagesWithInstruction,
+      media: [],
+      currentCard: currentEditCard,
+      skipInterview: true
+    };
+
+    startTransition(async () => {
+      try {
+        let result: LlmTurnResult;
+
+        if (config.directPreferred) {
+          try {
+            result = await sendLlmTurn(request, handleEditProgress);
+          } catch {
+            result = await sendProxiedLlmTurn(request, handleEditProgress);
+          }
+        } else {
+          result = await sendProxiedLlmTurn(request, handleEditProgress);
+        }
+
+        if (result.action === "submit_card") {
+          const normalized = normalizeCard(result.card, "character");
+          setEditPendingCard(normalized);
+          setEditThinking(result.thinking ?? "");
+          setEditSearchLogs(result.searches ?? []);
+          setEditMessages([
+            ...editMessagesWithInstruction,
+            { role: "assistant", content: result.message || t.editAccepted }
+          ]);
+          setEditStatus(result.message || t.editAccepted);
+          setEditInstruction("");
+        } else {
+          setEditError("LLM 返回了意外结果，请重试。");
+        }
+      } catch (err) {
+        setEditError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setIsEditing(false);
+      }
+    });
+  }
+
+  function acceptEdit() {
+    if (!editPendingCard) {
+      return;
+    }
+
+    setCard(editPendingCard);
+    setJsonText(JSON.stringify(editPendingCard, null, 2));
+    setIsCurrentCardShareable(isShareableCard(editPendingCard));
+    setShare(null);
+    setEditPendingCard(null);
+    setEditModalOpen(false);
+    setStatus(t.editAccepted);
+  }
+
+  function discardEdit() {
+    setEditPendingCard(null);
+    setEditStreamedText("");
   }
 
   async function downloadJson() {
@@ -1460,6 +1595,12 @@ export function CardGenerator() {
               <textarea className="json-editor" spellCheck={false} value={jsonText} onChange={(event) => handleJsonEdit(event.target.value)} />
             </label>
 
+            {hasGeneratedCard && config.apiKey.trim() && (
+              <button className="button ghost" type="button" onClick={openEditModal}>
+                {t.editWithAi}
+              </button>
+            )}
+
             <div className="inline-row">
               <button
                 className="button primary"
@@ -1511,6 +1652,11 @@ export function CardGenerator() {
               <button className="button amber" type="button" disabled={!avatarImage} onClick={downloadPng}>
                 {t.downloadPng}
               </button>
+              {config.apiKey.trim() && (
+                <button className="button ghost" type="button" onClick={openEditModal}>
+                  {t.editWithAi}
+                </button>
+              )}
             </div>
 
             <label className="field">
@@ -1589,6 +1735,14 @@ export function CardGenerator() {
                   <button className="button ghost" type="button" onClick={() => restoreHistoryItem(item)}>
                     {t.restore}
                   </button>
+                  {config.apiKey.trim() && (
+                    <button className="button ghost" type="button" onClick={() => {
+                      restoreHistoryItem(item);
+                      openEditModal();
+                    }}>
+                      {t.editWithAi}
+                    </button>
+                  )}
                   <button className="button ghost" type="button" onClick={() => downloadHistoryJson(item)}>
                     {t.downloadJson}
                   </button>
@@ -1616,6 +1770,77 @@ export function CardGenerator() {
       <p className="footer-note">
         {t.footer}
       </p>
+
+      {editModalOpen && (
+        <div className="edit-modal-overlay" onClick={(event) => { if (event.target === event.currentTarget) setEditModalOpen(false); }}>
+          <div className="edit-modal">
+            <div className="edit-modal-header">
+              <h3>{t.editModalTitle}</h3>
+              <button className="button ghost close-edit" type="button" onClick={() => setEditModalOpen(false)}>✕</button>
+            </div>
+
+            <div className="edit-card-summary">
+              <p><strong>{(editPendingCard || card).data.name}</strong></p>
+              <p className="hint">{((editPendingCard || card).data.description || t.noDescription).slice(0, 200)}</p>
+            </div>
+
+            {editMessages.length > 0 && (
+              <div className="edit-messages">
+                {editMessages.map((msg, index) => (
+                  <p key={index}><strong>{msg.role === "user" ? "You:" : "AI:"}</strong> {msg.content}</p>
+                ))}
+              </div>
+            )}
+
+            <label className="field">
+              <span>{t.editInstructionLabel}</span>
+              <textarea
+                value={editInstruction}
+                placeholder={t.editInstructionPlaceholder}
+                disabled={isEditing}
+                onChange={(event) => setEditInstruction(event.target.value)}
+              />
+            </label>
+
+            <div className="inline-row">
+              <button className="button primary" type="button" disabled={isEditing || !editInstruction.trim()} onClick={() => void runEditLlmTurn()}>
+                {isEditing ? t.editing : t.startEdit}
+              </button>
+              {editPendingCard && (
+                <>
+                  <button className="button primary" type="button" onClick={acceptEdit}>{t.acceptEdit}</button>
+                  <button className="button ghost" type="button" onClick={discardEdit}>{t.discardEdit}</button>
+                </>
+              )}
+            </div>
+
+            {editStatus && <p className="hint">{editStatus}</p>}
+            {editError && <p className="status-line" style={{ color: "var(--rose)" }}>{editError}</p>}
+
+            {editStreamedText && (
+              <div className="status-card">
+                <pre style={{ whiteSpace: "pre-wrap", maxHeight: 200, overflow: "auto", fontSize: 13 }}>{editStreamedText}</pre>
+              </div>
+            )}
+
+            {editThinking && (
+              <details className="thinking-panel">
+                <summary>{t.thinkingSummary}</summary>
+                <p>{editThinking}</p>
+              </details>
+            )}
+
+            {editSearchLogs.length > 0 && (
+              <div className="status-card">
+                <p className="status-line"><strong>{t.searchLog}</strong></p>
+                {editSearchLogs.map((query, index) => (
+                  <p className="status-line" key={index}>· {query}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </main>
   );
 
@@ -1951,6 +2176,7 @@ async function sendProxiedLlmTurn(request: {
   messages: ChatMessage[];
   media: MediaAttachment[];
   currentCard: CharacterCardV2;
+  skipInterview?: boolean;
 }, onProgress: (event: LlmProgressEvent) => void): Promise<LlmTurnResult> {
   const response = await fetch("/api/llm", {
     method: "POST",

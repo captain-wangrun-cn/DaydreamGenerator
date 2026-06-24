@@ -35,7 +35,8 @@ const requestSchema = z.object({
     size: z.number(),
     useAsAvatar: z.boolean().optional()
   })).default([]),
-  currentCard: characterCardV2Schema.optional()
+  currentCard: characterCardV2Schema.optional(),
+  skipInterview: z.boolean().optional().default(false)
 });
 
 export async function POST(request: Request) {

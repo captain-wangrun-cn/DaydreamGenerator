@@ -41,6 +41,7 @@ export type LlmTurnRequest = {
   messages: ChatMessage[];
   media: MediaAttachment[];
   currentCard?: CharacterCardV2;
+  skipInterview?: boolean;
 };
 
 export type LlmProgressEvent =

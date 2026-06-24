@@ -95,6 +95,16 @@ export type AppStrings = {
   modeStory: string;
   modeStoryHint: string;
   modeLabel: string;
+  editWithAi: string;
+  editModalTitle: string;
+  editInstructionLabel: string;
+  editInstructionPlaceholder: string;
+  startEdit: string;
+  editing: string;
+  acceptEdit: string;
+  discardEdit: string;
+  editAccepted: string;
+  editDiscarded: string;
 };
 
 export const languageOptions: LanguageOption[] = [
@@ -198,7 +208,17 @@ export const copy: Record<UiLanguage, AppStrings> = {
     modeNormalHint: "生成一个对话角色卡，适合日常聊天、角色扮演。",
     modeStory: "剧情角色卡片",
     modeStoryHint: "生成带完整剧情结构的角色卡，含多幕章节、分支走向和剧情推进指令。",
-    modeLabel: "卡片类型"
+    modeLabel: "卡片类型",
+    editWithAi: "AI 编辑",
+    editModalTitle: "AI 辅助编辑",
+    editInstructionLabel: "描述你想做的修改",
+    editInstructionPlaceholder: "例如：让性格更冷淡一些，把名字改成 Alice，添加一段神秘的背景故事……",
+    startEdit: "开始编辑",
+    editing: "正在编辑…",
+    acceptEdit: "接受修改",
+    discardEdit: "放弃修改",
+    editAccepted: "已应用 AI 编辑。",
+    editDiscarded: "已放弃本次编辑。"
   },
   "en-US": {
     steps: [
@@ -294,7 +314,17 @@ export const copy: Record<UiLanguage, AppStrings> = {
     modeNormalHint: "Generate a conversational character card for everyday chat and roleplay.",
     modeStory: "Story Card",
     modeStoryHint: "Generate a character card with full plot structure, multi-act chapters, branching points, and story progression instructions.",
-    modeLabel: "Card Type"
+    modeLabel: "Card Type",
+    editWithAi: "AI Edit",
+    editModalTitle: "AI-Assisted Editing",
+    editInstructionLabel: "Describe the changes you want",
+    editInstructionPlaceholder: "e.g. make the personality colder, change name to Alice, add a mysterious backstory…",
+    startEdit: "Start editing",
+    editing: "Editing…",
+    acceptEdit: "Accept changes",
+    discardEdit: "Discard changes",
+    editAccepted: "AI edits applied.",
+    editDiscarded: "Edit discarded."
   },
   "ja-JP": {
     steps: [
@@ -390,7 +420,17 @@ export const copy: Record<UiLanguage, AppStrings> = {
     modeNormalHint: "日常チャットやロールプレイ向けの会話キャラクターカードを生成。",
     modeStory: "ストリーカード",
     modeStoryHint: "マルチアクトの章構成、分岐ポイント、ストリー進行指示を含む完全なプロット構造のカードを生成。",
-    modeLabel: "カードタイプ"
+    modeLabel: "カードタイプ",
+    editWithAi: "AI 編集",
+    editModalTitle: "AI 補助編集",
+    editInstructionLabel: "変更内容を記述",
+    editInstructionPlaceholder: "例：性格をもっと冷たく、名前をアリスに、ミステリアスな背景を追加…",
+    startEdit: "編集開始",
+    editing: "編集中…",
+    acceptEdit: "変更を適用",
+    discardEdit: "変更を破棄",
+    editAccepted: "AI 編集を適用しました。",
+    editDiscarded: "編集を破棄しました。"
   }
 };
 

@@ -203,3 +203,17 @@ function submitCardParameters(mode?: CardMode) {
     required: ["status", "card"]
   };
 }
+
+export function openAiEditorTools() {
+  return openAiTools().filter((tool) => tool.function.name !== "ask_user");
+}
+
+export function anthropicEditorTools() {
+  return anthropicTools().filter((tool) => tool.name !== "ask_user");
+}
+
+export function geminiEditorTools() {
+  return geminiTools().map((group) => ({
+    functionDeclarations: group.functionDeclarations.filter((tool) => tool.name !== "ask_user")
+  }));
+}
