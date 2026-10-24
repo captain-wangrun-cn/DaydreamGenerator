@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createEmptyCard, isShareableCard, normalizeCard, type CharacterCardV2 } from "@/lib/card-schema";
+import { WrisAuthBadge } from "@/components/wris-auth-badge";
 import { copy, isUiLanguage, languageOptions, uiLocale } from "@/lib/i18n";
 import { LlmRequestError, sendLlmTurn, makeLocalDraft, unsupportedMediaWarning } from "@/lib/llm/providers";
 import type { AskQuestion, CardMode, ChatMessage, LlmConfig, LlmProgressEvent, LlmTurnResult, MediaAttachment, ProviderId, UiLanguage } from "@/lib/llm/types";
@@ -1113,14 +1114,17 @@ export function CardGenerator() {
         <p className="hero-copy">
           {t.hero}
         </p>
-        <button
-          className="theme-toggle"
-          type="button"
-          aria-label={t.themeLabel}
-          onClick={() => setTheme((t) => (t === "auto" ? "light" : t === "light" ? "dark" : "auto"))}
-        >
-          {theme === "auto" ? "🕐" : theme === "light" ? "☀️" : "🌙"}
-        </button>
+        <div className="masthead-tools">
+          <WrisAuthBadge />
+          <button
+            className="theme-toggle"
+            type="button"
+            aria-label={t.themeLabel}
+            onClick={() => setTheme((t) => (t === "auto" ? "light" : t === "light" ? "dark" : "auto"))}
+          >
+            {theme === "auto" ? "🕐" : theme === "light" ? "☀️" : "🌙"}
+          </button>
+        </div>
       </header>
 
       <nav className="stepper" aria-label={t.steps[2].title}>

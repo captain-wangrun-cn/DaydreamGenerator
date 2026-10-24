@@ -951,7 +951,64 @@ a {
   text-align: center;
 }
 
-/* Theme toggle */
+/* Theme toggle + wris.me 账号徽标 */
+.masthead-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.wris-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.85rem;
+  text-decoration: none;
+  max-width: 240px;
+}
+
+.wris-badge-login {
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.wris-badge-login:hover {
+  background: var(--surface-soft);
+  border-color: var(--line-strong);
+}
+
+.wris-badge img {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+
+.wris-badge-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wris-badge-user a {
+  color: var(--faint);
+  font-size: 0.78rem;
+  text-decoration: none;
+  flex: none;
+}
+
+.wris-badge-user a:hover {
+  color: var(--ink);
+}
+
 .theme-toggle {
   display: inline-flex;
   align-items: center;

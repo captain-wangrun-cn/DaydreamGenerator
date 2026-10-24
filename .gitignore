@@ -9,3 +9,6 @@ coverage
 *.tsbuildinfo
 .claude
 .npm-cache
+
+.vercel
+.env*
